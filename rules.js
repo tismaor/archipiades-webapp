@@ -86,13 +86,28 @@ function evaluerScan(e) {
   const bracelet = e.base.bracelets.get(e.uid) || null;
   const participant = bracelet ? (e.base.participants.get(bracelet.numero) || null) : null;
 
-  // --- 1. UID inconnu -------------------------------------------------------
+  // --- 1. UID inconnu, ou bracelet orphelin ---------------------------------
   // Testé AVANT le verrouillage : afficher l'UID en clair permet d'associer le
   // bracelet sur place, y compris pendant une évacuation.
-  if (!bracelet || !participant) {
+  //
+  // On distingue deux cas qui se ressemblent à l'écran mais appellent des
+  // gestes opposés :
+  //   - UID absent de la table    → bracelet jamais enregistré, à associer ;
+  //   - bracelet SANS participant → la ligne existe mais son numéro est vide ou
+  //     pointe vers un participant inexistant. C'est une erreur de saisie dans
+  //     le classeur, pas un bracelet inconnu — et sans ce message, on chercherait
+  //     longtemps du côté du bracelet.
+  if (!bracelet) {
     return decision(ETATS.NON_RECONNU, {
-      detail: 'Bracelet non attribué',
-      lignes: ['UID : ' + e.uid],
+      detail: 'Bracelet non enregistré',
+      uid: e.uid
+    });
+  }
+  if (!participant) {
+    return decision(ETATS.NON_RECONNU, {
+      detail: bracelet.numero
+        ? 'Bracelet lié au participant ' + bracelet.numero + ', introuvable dans la base'
+        : 'Bracelet enregistré mais sans numéro de participant',
       uid: e.uid
     });
   }

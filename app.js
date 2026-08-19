@@ -36,7 +36,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 4;
+const VERSION_APP = 5;
 
 /** Durée d'ouverture des réglages après présentation d'une carte. */
 const DEVERROUILLAGE_MS = 5 * 60 * 1000;
@@ -141,10 +141,50 @@ document.addEventListener('DOMContentLoaded', function () {
 
 /* ─────────────────────────── Réglages ─────────────────────────── */
 
+/**
+ * Configuration transmise par le lien lui-même.
+ *
+ * Format : …/index.html#url=<URL>&cle=<CLE>&terminal=<ID>
+ *
+ * On emploie le FRAGMENT (#) et non la requête (?) : le fragment n'est jamais
+ * envoyé au serveur, il ne se retrouve donc ni dans les journaux de GitHub
+ * Pages ni dans un en-tête Referer. Il est effacé de la barre d'adresse aussitôt
+ * lu, pour ne pas rester en clair à l'écran ni dans l'historique.
+ *
+ * Pourquoi ne PAS inscrire la clé dans le code : le dépôt est public et le
+ * JavaScript servi est lisible de toute façon. La clé voyage donc avec
+ * l'invitation, que l'on transmet aux bénévoles, et pas avec le programme.
+ */
+function lireConfigDuLien() {
+  const fragment = location.hash.replace(/^#/, '');
+  if (!fragment) return false;
+
+  const params = new URLSearchParams(fragment);
+  const url = params.get('url') || '';
+  const cle = params.get('cle') || '';
+  const terminal = params.get('terminal') || '';
+  if (!cle && !url && !terminal) return false;
+
+  if (url) localStorage.setItem('api_url', url);
+  if (cle) localStorage.setItem('api_cle', cle);
+  if (terminal) localStorage.setItem('api_terminal', terminal);
+
+  // Effacement immédiat : la clé ne doit pas rester visible dans la barre
+  // d'adresse, ni être capturée par une capture d'écran ou un partage de lien.
+  history.replaceState(null, '', location.pathname + location.search);
+  return true;
+}
+
 function chargerReglages() {
+  const venuDuLien = lireConfigDuLien();
+
   const url = localStorage.getItem('api_url') || '';
   const cle = localStorage.getItem('api_cle') || '';
   const terminal = localStorage.getItem('api_terminal') || 'WEB-01';
+
+  if (venuDuLien) {
+    message('Configuration reçue par le lien — synchronisation en cours.');
+  }
   $('champ-url').value = url;
   $('champ-cle').value = cle;
   $('champ-terminal').value = terminal;
@@ -581,25 +621,42 @@ function afficherPhoto(numero) {
     absente.className = 'cache';
   };
 
-  const masquer = function () {
+  const cadre = function (texte) {
     img.removeAttribute('src');
     img.className = '';
+    absente.innerHTML = texte;
     absente.className = '';
   };
 
-  masquer();
+  // Un numéro de demande évite qu'une photo lente écrase celle du participant
+  // suivant : deux personnes qui se présentent coup sur coup, et l'agent
+  // vérifierait un visage contre la mauvaise identité.
+  etat.demandePhoto = (etat.demandePhoto || 0) + 1;
+  const demande = etat.demandePhoto;
+  const encoreValable = function () { return demande === etat.demandePhoto; };
+
+  cadre('PHOTO NON<br>EMBARQUÉE');
+
   DB.lirePhoto(numero).then(function (blob) {
+    if (!encoreValable()) return;
     if (blob) { montrer(blob); return; }
-    // Absente du cache : on tente de la récupérer, mais le cadre explicite
-    // reste affiché en attendant — jamais d'image cassée.
-    if (navigator.onLine && API.estConfigure()) {
-      API.photo(numero)
-        .then(function (blob) {
-          return DB.ecrirePhoto(numero, blob).then(function () { return blob; });
-        })
-        .then(montrer)
-        .catch(function () { /* photo réellement absente : le cadre suffit */ });
-    }
+
+    if (!navigator.onLine || !API.estConfigure()) return;
+
+    // Distinguer « absente » de « en train d'arriver » : sans cela, l'agent
+    // reste plusieurs secondes devant un cadre qui semble définitif, alors que
+    // la photo est en route.
+    cadre('CHARGEMENT…');
+    API.photo(numero)
+      .then(function (blob) {
+        return DB.ecrirePhoto(numero, blob).then(function () { return blob; });
+      })
+      .then(function (blob) {
+        if (encoreValable()) montrer(blob);
+      })
+      .catch(function () {
+        if (encoreValable()) cadre('PHOTO NON<br>EMBARQUÉE');
+      });
   });
 }
 
@@ -746,31 +803,97 @@ function prechargerPhotos() {
   if (!API.estConfigure()) { message('Configurez d\'abord la connexion.', 'erreur'); return; }
   const numeros = Array.from(etat.base.participants.keys());
   if (!numeros.length) { message('Base vide : synchronisez d\'abord.', 'erreur'); return; }
-  if (!confirm(numeros.length + ' photos à télécharger (~' +
-      Math.round(numeros.length * 12 / 1024) + ' Mo).\n\nÀ faire en Wi-Fi. Continuer ?')) return;
 
   const bouton = $('btn-photos');
   bouton.disabled = true;
-  let index = 0, obtenues = 0, absentes = 0;
+  bouton.textContent = 'MESURE EN COURS…';
 
-  const suivante = function () {
-    if (index >= numeros.length) {
+  // On MESURE une photo avant d'annoncer quoi que ce soit. Une estimation
+  // théorique mentirait d'un facteur douze quand le dossier « Miniatures » n'est
+  // pas déclaré : le proxy sert alors la photo Drive d'origine.
+  const debut = Date.now();
+  API.photo(numeros[0])
+    .then(function (blob) {
+      return DB.ecrirePhoto(numeros[0], blob).then(function () { return blob; });
+    })
+    .then(function (blob) {
+      const dureeUnitaire = (Date.now() - debut) / 1000;
+      const tailleKo = blob.size / 1024;
+      const totalMo = Math.round(numeros.length * tailleKo / 1024);
+      // Trois téléchargements simultanés : au-delà, Apps Script étrangle et
+      // l'on perd le bénéfice.
+      const minutes = Math.round(numeros.length * dureeUnitaire / 3 / 60);
+
+      let texte = numeros.length + ' photos, environ ' + totalMo + ' Mo.\n' +
+                  'Durée estimée : ' + (minutes > 60
+                    ? Math.round(minutes / 60) + ' h ' + (minutes % 60) + ' min'
+                    : minutes + ' min') + '.\n\n';
+
+      if (tailleKo > 50) {
+        texte += '⚠️ Chaque photo pèse ' + Math.round(tailleKo) + ' ko au lieu des ~12 ko\n' +
+                 'attendus : le dossier « Miniatures » n\'est pas déclaré côté\n' +
+                 'serveur. Générez-le avec prepare_sd.py AVANT de précharger,\n' +
+                 'vous diviserez le volume et la durée par dix.\n\n';
+      }
+      texte += 'À faire en Wi-Fi. Continuer ?';
+
+      if (!confirm(texte)) {
+        bouton.disabled = false;
+        bouton.textContent = 'PRÉCHARGER LES PHOTOS';
+        return;
+      }
+      return telechargerPhotos(numeros, bouton, dureeUnitaire);
+    })
+    .catch(function (erreur) {
       bouton.disabled = false;
       bouton.textContent = 'PRÉCHARGER LES PHOTOS';
-      message(obtenues + ' photo(s) en cache, ' + absentes + ' absente(s).');
-      return rafraichirBandeau();
-    }
-    const numero = numeros[index++];
-    bouton.textContent = 'TÉLÉCHARGEMENT ' + index + '/' + numeros.length;
+      message('Mesure impossible : ' + erreur.message, 'erreur');
+    });
+}
 
-    return DB.lirePhoto(numero).then(function (existante) {
-      if (existante) { obtenues++; return; }
-      return API.photo(numero)
-        .then(function (blob) { obtenues++; return DB.ecrirePhoto(numero, blob); })
-        .catch(function () { absentes++; });
-    }).then(suivante);
+/**
+ * Télécharge les photos manquantes, trois à la fois.
+ *
+ * Le séquentiel serait trois fois plus lent pour rien : le goulot est la
+ * latence d'Apps Script, pas la bande passante. Au-delà de trois, le service
+ * étrangle et l'on ne gagne plus rien.
+ */
+function telechargerPhotos(numeros, bouton, dureeUnitaire) {
+  const depart = Date.now();
+  let index = 0, obtenues = 0, absentes = 0, faits = 0;
+
+  const suivante = function () {
+    if (index >= numeros.length) return Promise.resolve();
+    const numero = numeros[index++];
+
+    return DB.lirePhoto(numero)
+      .then(function (existante) {
+        if (existante) { obtenues++; return; }
+        return API.photo(numero)
+          .then(function (blob) { obtenues++; return DB.ecrirePhoto(numero, blob); })
+          .catch(function () { absentes++; });
+      })
+      .then(function () {
+        faits++;
+        if (faits % 5 === 0 || faits === numeros.length) {
+          const restant = Math.round((Date.now() - depart) / faits *
+                                     (numeros.length - faits) / 60000);
+          bouton.textContent = faits + '/' + numeros.length +
+                               ' — encore ~' + restant + ' min';
+        }
+        return suivante();
+      });
   };
-  suivante();
+
+  const fils = [];
+  for (let i = 0; i < 3; i++) fils.push(suivante());
+
+  return Promise.all(fils).then(function () {
+    bouton.disabled = false;
+    bouton.textContent = 'PRÉCHARGER LES PHOTOS';
+    message(obtenues + ' photo(s) en cache, ' + absentes + ' absente(s).');
+    return rafraichirBandeau();
+  });
 }
 
 /* ─────────────────────────── Interface ─────────────────────────── */
