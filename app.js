@@ -38,7 +38,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 7;
+const VERSION_APP = 8;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -427,21 +427,13 @@ function chercherCarte(uid) {
   return null;
 }
 
-/**
- * Prépare l'écran de verrou en nommant la fonction que l'on cherchait.
- *
- * Deux messages plutôt qu'un : l'écran, pour qui regarde ; le message flottant,
- * pour qui vient d'appuyer et fixe encore le bas de l'écran. Sans cela un
- * bénévole tape trois fois sur l'onglet sans comprendre pourquoi rien ne bouge.
- */
+/** Prépare l'écran de verrou en nommant la fonction que l'on cherchait. */
 function preparerVerrou(vueVisee) {
   etat.vueDemandee = vueVisee;
-  const nom = vueVisee === 'vue-recherche' ? 'RECHERCHE' : 'RÉGLAGES';
   $('pave-verrou').className = '';
   $('verrou-titre').textContent = vueVisee === 'vue-recherche'
     ? 'RECHERCHE VERROUILLÉE' : 'RÉGLAGES VERROUILLÉS';
   $('verrou-detail').textContent = 'Scannez un bracelet STAFF pour déverrouiller';
-  message('🔒 ' + nom + ' — scannez un bracelet STAFF pour déverrouiller.');
 }
 
 function tenterDeverrouillage(uid) {
