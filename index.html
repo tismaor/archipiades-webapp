@@ -166,6 +166,8 @@ nav button.actif { color: var(--texte); border-top: 2px solid var(--texte); }
 #verrou-detail { font-size: 14px; color: var(--gris); margin-top: 8px; }
 #verrou-manuel { display: none; margin-top: 20px; }
 #verrou-manuel.visible { display: block; }
+#saisie-manuelle { display: none; }
+#saisie-manuelle.visible { display: block; }
 #banniere-deverrouille {
   display: none; padding: 10px; margin-bottom: 12px;
   border: 1px solid var(--gris); font-size: 12px; color: var(--gris);
@@ -249,6 +251,17 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
     </div>
 
     <button class="principal" id="btn-nfc">DÉMARRER LA LECTURE NFC</button>
+
+    <button class="discret" id="btn-basculer-manuel">SAISIE MANUELLE D'UN UID</button>
+    <div id="saisie-manuelle">
+      <input id="champ-uid-scan" type="text" autocomplete="off" autocapitalize="characters"
+             spellcheck="false" placeholder="04:a1:b2:c3:d4:e5:f6">
+      <button id="btn-scan-manuel">CONTRÔLER</button>
+      <div class="note">
+        Pour un bracelet abîmé qui refuse de se lire, ou une puce non compatible
+        NDEF. Le passage est enregistré exactement comme un scan.
+      </div>
+    </div>
     <div id="nfc-indispo" class="avertissement" style="display:none">
       Web NFC n'est pas disponible sur ce navigateur.<br>
       Il n'existe que sur <b>Chrome pour Android</b> : sur iPhone, ou dans un
@@ -304,6 +317,7 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
     <div class="stat"><span>Scans en attente</span><span id="stat-attente">—</span></div>
     <div class="stat"><span>Dernière synchronisation</span><span id="stat-sync">—</span></div>
     <div class="stat"><span>Point de contrôle</span><span id="stat-point">—</span></div>
+    <div class="stat"><span>Version de l'application</span><span id="stat-version">—</span></div>
 
     <button id="btn-sync">SYNCHRONISER MAINTENANT</button>
     <button id="btn-photos">PRÉCHARGER LES PHOTOS</button>

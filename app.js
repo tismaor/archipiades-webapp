@@ -30,6 +30,14 @@ const etat = {
   deverrouillage: null       // { nom, role, expire }
 };
 
+/**
+ * Version de la coque applicative.
+ * Incrémentée automatiquement par tools/deployer_webapp.sh, en même temps que
+ * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
+ * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
+ */
+const VERSION_APP = 2;
+
 /** Durée d'ouverture des réglages après présentation d'une carte. */
 const DEVERROUILLAGE_MS = 5 * 60 * 1000;
 
@@ -110,11 +118,11 @@ document.addEventListener('DOMContentLoaded', function () {
         envoyerFileScans();
       } else {
         montrerVue('vue-reglages');
-        afficherPave('CONFIGURATION REQUISE', 'Renseignez l\'URL et la clé API', null);
+        afficherPave('CONFIGURATION REQUISE', 'Renseignez l\'URL et la clé API', null, true);
       }
     })
     .catch(function (erreur) {
-      afficherPave('ERREUR', erreur.message, 'rouge');
+      afficherPave('ERREUR', erreur.message, 'rouge', true);
     });
 
   window.addEventListener('online', function () {
@@ -196,6 +204,14 @@ function synchroniser(manuelle) {
   etat.syncEnCours = true;
   $('etat-reseau').textContent = 'sync…';
 
+  // La première synchronisation dure une quinzaine de secondes sur 2 000
+  // participants. Sans ceci, l'écran resterait sur « CONFIGURATION REQUISE »
+  // pendant tout ce temps, alors que la configuration vient précisément d'être
+  // saisie — on croit à un échec.
+  if (etat.paveSysteme && !etat.blocage) {
+    afficherPave('SYNCHRONISATION…', 'Chargement de la base, patientez', null, true);
+  }
+
   let recues = 0;
 
   const parcourirPages = function () {
@@ -229,11 +245,15 @@ function synchroniser(manuelle) {
     .then(envoyerFileScans)
     .then(function () {
       $('etat-reseau').textContent = 'à jour';
+      afficherEcranPret();
       if (manuelle) message(recues + ' fiche(s) mise(s) à jour.');
     })
     .catch(function (erreur) {
       $('etat-reseau').textContent = 'échec sync';
       $('etat-reseau').className = 'alerte-reseau';
+      if (etat.paveSysteme && !etat.blocage) {
+        afficherPave('SYNCHRONISATION IMPOSSIBLE', erreur.message, 'orange', true);
+      }
       if (manuelle) message('Synchronisation impossible : ' + erreur.message, 'erreur');
       console.warn('sync : ' + erreur.message);
     })
@@ -352,9 +372,31 @@ function envoyerFileScans() {
 /* ─────────────────────────── Lecture NFC ─────────────────────────── */
 
 function brancherNfc() {
+  // La saisie manuelle est TOUJOURS disponible : un bracelet abîmé, une puce
+  // non compatible NDEF ou un téléphone sans Web NFC ne doivent jamais empêcher
+  // de traiter une personne devant la file.
+  $('btn-basculer-manuel').addEventListener('click', function () {
+    const zone = $('saisie-manuelle');
+    const ouvert = zone.className === 'visible';
+    zone.className = ouvert ? '' : 'visible';
+    if (!ouvert) $('champ-uid-scan').focus();
+  });
+
+  const controler = function () {
+    const saisi = normaliserUid($('champ-uid-scan').value);
+    if (!saisi) { message('Saisissez un UID.', 'erreur'); return; }
+    $('champ-uid-scan').value = '';
+    traiterScan(saisi);
+  };
+  $('btn-scan-manuel').addEventListener('click', controler);
+  $('champ-uid-scan').addEventListener('keydown', function (evenement) {
+    if (evenement.key === 'Enter') controler();
+  });
+
   if (!('NDEFReader' in window)) {
     $('btn-nfc').style.display = 'none';
     $('nfc-indispo').style.display = 'block';
+    $('saisie-manuelle').className = 'visible';
     return;
   }
   $('btn-nfc').addEventListener('click', demarrerNfc);
@@ -370,7 +412,7 @@ function demarrerNfc() {
     $('btn-nfc').disabled = true;
     $('btn-verrou-nfc').textContent = 'LECTURE NFC ACTIVE — PRÉSENTEZ LA CARTE';
     $('btn-verrou-nfc').disabled = true;
-    afficherPave('PRÊT', 'Approchez un bracelet', null);
+    afficherPave('PRÊT', 'Approchez un bracelet', null, true);
 
     lecteur.onreading = function (evenement) {
       const uid = normaliserUid(evenement.serialNumber);
@@ -379,8 +421,24 @@ function demarrerNfc() {
       if (etat.vueCourante === 'vue-verrou') tenterDeverrouillage(uid);
       else traiterScan(uid);
     };
+    /**
+     * Web NFC ne sait lire QUE les puces au format NDEF.
+     *
+     * Une carte de transport, un badge MIFARE Classic ou une puce non formatée
+     * déclenchent cette erreur — même si une application native comme NFC Tools
+     * les lit sans difficulté, car elle accède à l'UID sous la couche NDEF.
+     *
+     * Le message doit donc orienter vers la vraie cause plutôt que d'inviter à
+     * représenter indéfiniment une puce que le navigateur ne lira jamais.
+     */
     lecteur.onreadingerror = function () {
-      afficherPave('LECTURE ILLISIBLE', 'Représentez le bracelet', 'orange');
+      etat.echecsLecture = (etat.echecsLecture || 0) + 1;
+      afficherPave('LECTURE IMPOSSIBLE',
+        etat.echecsLecture >= 2
+          ? 'Puce non compatible NDEF (carte de transport, badge MIFARE) — ' +
+            'utilisez la saisie manuelle'
+          : 'Représentez le bracelet',
+        'orange');
     };
   }).catch(function (erreur) {
     $('btn-nfc').textContent = 'DÉMARRER LA LECTURE NFC';
@@ -476,10 +534,35 @@ function afficherDecision(decision) {
   gererBlocage(decision);
 }
 
-function afficherPave(libelle, detail, couleur) {
+/**
+ * @param {boolean=} systeme Message d'état de l'application (configuration
+ *   requise, erreur, prêt) plutôt que la décision d'un scan. Ces messages-là
+ *   peuvent être remplacés automatiquement ; une décision affichée à l'agent,
+ *   jamais.
+ */
+function afficherPave(libelle, detail, couleur, systeme) {
   $('pave-libelle').textContent = libelle;
   $('pave-detail').textContent = detail || '';
   $('pave').className = couleur || '';
+  etat.paveSysteme = systeme === true;
+}
+
+/**
+ * Remet l'écran en attente de scan.
+ *
+ * Appelé après une synchronisation réussie : sans cela, le pavé
+ * « CONFIGURATION REQUISE » affiché au démarrage restait indéfiniment à
+ * l'écran, alors que l'application était devenue opérationnelle.
+ *
+ * Ne touche JAMAIS à une décision en cours d'affichage, ni à un écran bloquant
+ * en attente d'acquittement.
+ */
+function afficherEcranPret() {
+  if (!etat.paveSysteme || etat.blocage) return;
+  afficherPave('PRÊT', 'Approchez un bracelet', null, true);
+  $('identite').className = '';
+  $('alerte').className = '';
+  $('repas').className = '';
 }
 
 function afficherPhoto(numero) {
@@ -590,7 +673,7 @@ function leverBlocage(motif) {
 
   etat.blocage = null;
   $('acquittement').className = '';
-  afficherPave('PRÊT', 'Approchez un bracelet', null);
+  afficherPave('PRÊT', 'Approchez un bracelet', null, true);
 }
 
 function brancherAcquittement() {
@@ -756,6 +839,7 @@ function rafraichirStatistiques() {
   DB.lireMeta('point_controle').then(function (point) {
     $('stat-point').textContent = point || '—';
   });
+  $('stat-version').textContent = 'v' + VERSION_APP;
 }
 
 /** Retour haptique : distinct selon la gravité, perceptible sans regarder. */
