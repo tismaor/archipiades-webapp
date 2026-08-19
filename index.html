@@ -219,6 +219,48 @@ button.attente { border-color: var(--orange); color: var(--orange); }
 nav button.verrouille { color: var(--gris-sombre); }
 nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 
+/* ── Écran de démarrage ────────────────────────────────────────────────── */
+#demarrage {
+  display: none; position: fixed; inset: 0; z-index: 100;
+  background: var(--fond); color: var(--texte);
+  flex-direction: column; align-items: center; justify-content: center;
+  padding: 24px; text-align: center;
+}
+#demarrage.visible { display: flex; }
+#demarrage-logo {
+  width: 96px; height: 96px; line-height: 92px; font-size: 40px; font-weight: 700;
+  border: 3px solid var(--texte); letter-spacing: 2px;
+}
+#demarrage-titre { margin-top: 20px; font-size: 21px; font-weight: 700; letter-spacing: 3px; }
+#demarrage-sous-titre { margin-top: 4px; font-size: 13px; color: var(--gris); }
+
+/* Barre indéterminée : on ne connaît pas le nombre total de fiches avant la
+   dernière page, une barre de progression classique mentirait. */
+#demarrage-barre {
+  width: 100%; max-width: 260px; height: 3px; margin-top: 36px;
+  background: var(--gris-sombre); overflow: hidden;
+}
+#demarrage-barre-curseur {
+  width: 40%; height: 100%; background: var(--texte);
+  animation: balayage 1.1s ease-in-out infinite;
+}
+@keyframes balayage {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+/* Un appareil réglé sur « animations réduites » garde une barre fixe : le
+   mouvement n'est pas l'information, le compteur l'est. */
+@media (prefers-reduced-motion: reduce) {
+  #demarrage-barre-curseur { animation: none; width: 100%; }
+}
+
+#demarrage-etat { margin-top: 20px; font-size: 15px; }
+#demarrage-compteur { margin-top: 6px; font-size: 13px; color: var(--gris); min-height: 18px; }
+#demarrage.echec #demarrage-etat { color: var(--orange); }
+#demarrage.echec #demarrage-barre { display: none; }
+#demarrage-secours { display: none; width: 100%; max-width: 320px; margin-top: 28px; }
+#demarrage.echec #demarrage-secours { display: block; }
+
 /* Message transitoire : jamais de boîte modale, qui figerait la file. */
 #message {
   display: none; position: fixed; left: 12px; right: 12px;
@@ -239,6 +281,26 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
 <body>
 
 <div id="panne"></div>
+
+<!-- ── Écran de démarrage ────────────────────────────────────────────────
+     Superposition plein écran affichée à la toute première mise en service,
+     tant que la base locale est vide. Bloque l'accès à l'application : un
+     terminal sans base ne peut RIEN décider, le laisser croire le contraire
+     serait pire que de faire patienter. -->
+<div id="demarrage">
+  <div id="demarrage-logo">AR</div>
+  <div id="demarrage-titre">ARCHIPIADES</div>
+  <div id="demarrage-sous-titre">Contrôle d'accès</div>
+
+  <div id="demarrage-barre"><div id="demarrage-barre-curseur"></div></div>
+  <div id="demarrage-etat">Chargement de la base…</div>
+  <div id="demarrage-compteur"></div>
+
+  <div id="demarrage-secours">
+    <button class="principal" id="btn-demarrage-reessayer">RÉESSAYER</button>
+    <button id="btn-demarrage-reglages">OUVRIR LES RÉGLAGES</button>
+  </div>
+</div>
 
 <div id="bandeau">
   <span id="etat-terminal">—</span>

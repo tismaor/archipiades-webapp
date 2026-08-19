@@ -29,6 +29,7 @@ const etat = {
   cartes: [],                // cartes STAFF/ADMIN connues
   deverrouillage: null,      // { nom, role, expire }
   vueDemandee: null,         // vue visée avant interception par le verrou
+  demarrage: false,          // écran de première mise en service affiché
   filtres: { ecole: '', statut: '' }   // conservés d'une recherche à l'autre
 };
 
@@ -38,7 +39,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 8;
+const VERSION_APP = 9;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -49,6 +50,13 @@ const VERSION_APP = 8;
  * plusieurs heures ; sur un téléphone de terrain, quelques minutes.
  */
 const DEVERROUILLAGE_S_DEFAUT = 900;
+
+/**
+ * Rôle attribué au déverrouillage de dépannage ouvert depuis l'écran de
+ * démarrage. Nommé pour qu'il apparaisse tel quel dans le bandeau : on doit
+ * voir que cette session n'a été ouverte par aucune carte.
+ */
+const ROLE_DEPANNAGE = 'SANS CARTE';
 
 function dureeDeverrouillageMs() {
   const config = (etat.refs && etat.refs.config) || {};
@@ -122,6 +130,7 @@ document.addEventListener('DOMContentLoaded', function () {
   brancher('acquittement', brancherAcquittement);
   brancher('verrou', brancherVerrou);
   brancher('association', brancherAssociation);
+  brancher('démarrage', brancherDemarrage);
 
   chargerReglages();
 
@@ -129,12 +138,21 @@ document.addEventListener('DOMContentLoaded', function () {
     .then(rechargerBaseMemoire)
     .then(rafraichirBandeau)
     .then(function () {
-      if (API.estConfigure()) {
-        planifierSync(1000);
-        envoyerFileScans();
-      } else {
+      if (!API.estConfigure()) {
         montrerVue('vue-reglages');
         afficherPave('CONFIGURATION REQUISE', 'Renseignez l\'URL et la clé API', null, true);
+        return;
+      }
+      envoyerFileScans();
+      // Base vide : l'appareil ne peut RIEN décider. On bloque sur l'écran de
+      // démarrage plutôt que de laisser croire qu'il est opérationnel — un
+      // bénévole qui scanne sur une base vide obtiendrait « NON RECONNU » sur
+      // tout le monde et conclurait à des bracelets défectueux.
+      if (etat.base.participants.size === 0) {
+        ouvrirEcranDemarrage();
+        synchroniser(false);
+      } else {
+        planifierSync(1000);
       }
     })
     .catch(function (erreur) {
@@ -154,6 +172,70 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 });
+
+/* ──────────────────── Écran de première mise en service ──────────────────── */
+
+/**
+ * Bloque l'application tant que la base n'est pas chargée.
+ *
+ * Deux raisons, aucune cosmétique :
+ *   1. un terminal à base vide refuserait TOUT LE MONDE avec « NON RECONNU »,
+ *      ce qu'un bénévole interpréterait comme des bracelets défectueux ;
+ *   2. le premier chargement dure une quinzaine de secondes sur 2 000 fiches —
+ *      sans écran dédié, on croit que le lien n'a pas fonctionné et on le
+ *      rouvre en boucle.
+ *
+ * ⚠️ Un écran bloquant DOIT avoir une issue. En cas d'échec (mauvaise clé, pas
+ * de réseau), on offre « RÉESSAYER » et « OUVRIR LES RÉGLAGES » : sans cela un
+ * téléphone mal configuré serait définitivement inutilisable.
+ */
+function ouvrirEcranDemarrage() {
+  etat.demarrage = true;
+  const zone = $('demarrage');
+  zone.className = 'visible';
+  $('demarrage-etat').textContent = 'Chargement de la base…';
+  $('demarrage-compteur').textContent = '';
+}
+
+function fermerEcranDemarrage() {
+  etat.demarrage = false;
+  $('demarrage').className = '';
+}
+
+function majProgressionDemarrage(recues) {
+  if (!etat.demarrage) return;
+  $('demarrage-compteur').textContent = recues
+    ? recues.toLocaleString('fr-FR') + ' fiches chargées'
+    : '';
+}
+
+function echecEcranDemarrage(motif) {
+  if (!etat.demarrage) return;
+  $('demarrage').className = 'visible echec';
+  $('demarrage-etat').textContent = 'Synchronisation impossible';
+  $('demarrage-compteur').textContent = motif;
+}
+
+function brancherDemarrage() {
+  $('btn-demarrage-reessayer').addEventListener('click', function () {
+    $('demarrage').className = 'visible';
+    $('demarrage-etat').textContent = 'Chargement de la base…';
+    $('demarrage-compteur').textContent = '';
+    synchroniser(false);
+  });
+  // Porte de sortie : c'est dans les réglages que l'on corrige l'URL ou la clé.
+  //
+  // Elle passe DÉLIBÉRÉMENT outre le verrou par carte. Un écran bloquant dont
+  // la seule issue mène à un second écran bloquant transforme un téléphone mal
+  // configuré en brique, et il n'y a pas toujours un bracelet STAFF à portée
+  // de main quand on met en service à 7 h du matin.
+  $('btn-demarrage-reglages').addEventListener('click', function () {
+    fermerEcranDemarrage();
+    etat.deverrouillage = { nom: 'Dépannage', role: ROLE_DEPANNAGE,
+                            expire: Date.now() + 5 * 60 * 1000 };
+    montrerVue('vue-reglages');
+  });
+}
 
 /* ─────────────────────────── Réglages ─────────────────────────── */
 
@@ -222,6 +304,9 @@ function brancherReglages() {
     localStorage.setItem('api_terminal', terminal);
     API.configurer(url, cle, terminal);
     $('etat-terminal').textContent = terminal;
+    // Première configuration saisie à la main : même écran de chargement que
+    // par le lien, le chemin ne change pas ce que l'appareil sait faire.
+    if (etat.base.participants.size === 0) ouvrirEcranDemarrage();
     synchroniser(true);
   });
 
@@ -262,15 +347,8 @@ function synchroniser(manuelle) {
 
   // La synchronisation ne s'affiche QUE dans le bandeau du haut : c'est une
   // activité de fond, elle n'a rien à faire dans le pavé de décision que
-  // l'agent regarde entre deux scans.
-  //
-  // Seule exception : la toute première synchronisation, quand la base est
-  // encore vide — l'appareil n'est alors pas utilisable, et il faut le dire.
-  if (etat.paveSysteme && !etat.blocage && etat.base.participants.size === 0) {
-    afficherPave('PREMIÈRE SYNCHRONISATION',
-      'Chargement de la base, patientez', null, true);
-  }
-
+  // l'agent regarde entre deux scans. Le tout premier chargement, lui, a son
+  // écran dédié — voir ouvrirEcranDemarrage().
   let recues = 0;
 
   const parcourirPages = function () {
@@ -281,6 +359,7 @@ function synchroniser(manuelle) {
       })
       .then(function (delta) {
         recues += (delta.participants || []).length;
+        majProgressionDemarrage(recues);
         etat.cadenceS = delta.sync_interval_s || etat.cadenceS;
         return DB.appliquerDelta(delta).then(function () {
           if (delta.suite) {
@@ -305,15 +384,20 @@ function synchroniser(manuelle) {
     .then(function () {
       $('etat-reseau').textContent = 'à jour';
       afficherEcranPret();
-      return verifierPeremption();
+      // On ne libère l'écran de démarrage que si la base est RÉELLEMENT peuplée :
+      // une sync réussie sur un classeur vide ne rend pas l'appareil utilisable.
+      if (etat.demarrage) {
+        if (etat.base.participants.size > 0) fermerEcranDemarrage();
+        else echecEcranDemarrage('Le serveur n\'a renvoyé aucun participant — '
+          + 'vérifiez l\'identifiant du terminal et le classeur.');
+      }
       if (manuelle) message(recues + ' fiche(s) mise(s) à jour.');
+      return verifierPeremption();
     })
     .catch(function (erreur) {
       $('etat-reseau').textContent = 'échec sync';
       $('etat-reseau').className = 'alerte-reseau';
-      if (etat.paveSysteme && !etat.blocage && etat.base.participants.size === 0) {
-        afficherPave('SYNCHRONISATION IMPOSSIBLE', erreur.message, 'orange', true);
-      }
+      echecEcranDemarrage(erreur.message);
       if (manuelle) message('Synchronisation impossible : ' + erreur.message, 'erreur');
       console.warn('sync : ' + erreur.message);
     })
