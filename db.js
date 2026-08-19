@@ -109,6 +109,12 @@ function appliquerDelta(delta) {
     // phrase de passe. Elles servent à déverrouiller un écran, pas à autoriser
     // une opération, qui reste vérifiée côté serveur.
     if (delta.cartes) magasinMeta.put(delta.cartes, 'cartes');
+    if (typeof delta.expire_le === 'number') magasinMeta.put(delta.expire_le, 'expire_le');
+    // Ce terminal a-t-il le droit d'attribuer des bracelets ? Décidé par
+    // l'organisation dans l'onglet `Terminaux`, jamais par l'appareil.
+    if (typeof delta.peut_associer === 'boolean') {
+      magasinMeta.put(delta.peut_associer, 'peut_associer');
+    }
     if (delta.refs_version) magasinMeta.put(delta.refs_version, 'refs_version');
     if (delta.point_controle) magasinMeta.put(delta.point_controle, 'point_controle');
     if (delta.profil_donnees) magasinMeta.put(delta.profil_donnees, 'profil_donnees');
@@ -174,21 +180,63 @@ function chargerBase() {
   });
 }
 
-/** Recherche par nom, prénom, numéro ou école. Sur la base déjà en mémoire. */
-function rechercher(base, requete, limite) {
+/**
+ * Recherche par nom, prénom, numéro ou école, sur la base déjà en mémoire.
+ *
+ * `filtres` = { ecole, statut }, l'un et l'autre facultatifs. Un filtre seul
+ * suffit à produire une liste : c'est le mode d'usage du guichet d'accueil, où
+ * l'on affiche toute une école et où l'on descend la liste au fil de la file,
+ * sans rien taper.
+ *
+ * Le tri est alphabétique, et non l'ordre du classeur : une file d'attente
+ * s'organise approximativement par ordre alphabétique, la liste doit suivre.
+ *
+ * Renvoie { liste, total } — `total` compte les correspondances réelles, même
+ * au-delà de la limite d'affichage, pour que l'opérateur sache s'il voit tout.
+ */
+function rechercher(base, requete, limite, filtres) {
   const terme = normaliserTexte(requete);
-  if (terme.length < 2) return [];
-  const resultats = [];
+  const f = filtres || {};
+  const ecole = normaliserTexte(f.ecole || '');
+  const statut = normaliserTexte(f.statut || '');
+  const filtreActif = !!(ecole || statut);
+
+  // Sans filtre, on exige deux caractères : afficher 2 000 fiches sur une seule
+  // lettre n'aiderait personne. Avec un filtre, la liste EST le résultat.
+  if (terme.length < 2 && !filtreActif) return { liste: [], total: 0 };
+
+  const trouves = [];
   const iterateur = base.participants.values();
   let entree = iterateur.next();
-  while (!entree.done && resultats.length < (limite || 20)) {
+  while (!entree.done) {
     const p = entree.value;
-    const champs = normaliserTexte(
-      [p.numero, p.nom, p.prenom, p.ecole].filter(Boolean).join(' '));
-    if (champs.indexOf(terme) !== -1) resultats.push(p);
     entree = iterateur.next();
+    if (ecole && normaliserTexte(p.ecole || '') !== ecole) continue;
+    if (statut && normaliserTexte(p.statut || '') !== statut) continue;
+    if (terme.length >= 2) {
+      const champs = normaliserTexte(
+        [p.numero, p.nom, p.prenom, p.ecole].filter(Boolean).join(' '));
+      if (champs.indexOf(terme) === -1) continue;
+    }
+    trouves.push(p);
   }
-  return resultats;
+
+  trouves.sort(function (a, b) {
+    return normaliserTexte((a.nom || '') + ' ' + (a.prenom || ''))
+      .localeCompare(normaliserTexte((b.nom || '') + ' ' + (b.prenom || '')));
+  });
+
+  return { liste: trouves.slice(0, limite || 200), total: trouves.length };
+}
+
+/** Valeurs distinctes d'un champ, triées — alimente les listes de filtres. */
+function valeursDistinctes(base, champ) {
+  const vues = Object.create(null);
+  base.participants.forEach(function (p) {
+    const valeur = String(p[champ] == null ? '' : p[champ]).trim();
+    if (valeur) vues[valeur] = true;
+  });
+  return Object.keys(vues).sort(function (a, b) { return a.localeCompare(b); });
 }
 
 function normaliserTexte(valeur) {
@@ -276,6 +324,13 @@ function scansRecents(fenetreMs) {
   });
 }
 
+/** Efface tout l'historique — utilisé à la péremption du terminal. */
+function viderHistorique() {
+  return transaction(['historique'], 'readwrite', function (tx) {
+    tx.objectStore('historique').clear();
+  });
+}
+
 /** Élague l'historique : il ne sert qu'aux dernières heures. */
 function purgerHistorique() {
   const limite = Date.now() - HISTORIQUE_DUREE_MS;
@@ -330,8 +385,8 @@ function statistiques() {
 
 window.DB = {
   ouvrirDb, appliquerDelta, lireCurseur, ecrireCurseur, lireMeta, ecrireMeta,
-  chargerBase, rechercher, lirePhoto, ecrirePhoto, compterPhotos,
+  chargerBase, rechercher, valeursDistinctes, lirePhoto, ecrirePhoto, compterPhotos,
   empilerScan, lireFileScans, retirerScans, compterFileScans, scansRecents,
-  purgerHistorique,
+  purgerHistorique, viderHistorique,
   purgerBase, statistiques
 };

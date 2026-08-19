@@ -27,7 +27,9 @@ const etat = {
   lecteurNfc: null,
   vueCourante: 'vue-scan',
   cartes: [],                // cartes STAFF/ADMIN connues
-  deverrouillage: null       // { nom, role, expire }
+  deverrouillage: null,      // { nom, role, expire }
+  vueDemandee: null,         // vue visée avant interception par le verrou
+  filtres: { ecole: '', statut: '' }   // conservés d'une recherche à l'autre
 };
 
 /**
@@ -36,10 +38,23 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 5;
+const VERSION_APP = 6;
 
-/** Durée d'ouverture des réglages après présentation d'une carte. */
-const DEVERROUILLAGE_MS = 5 * 60 * 1000;
+/**
+ * Durée d'ouverture des fonctions réservées après présentation d'une carte.
+ *
+ * Réglable depuis l'onglet `Config` du classeur (`deverrouillage_s`) : au
+ * guichet d'accueil, un opérateur enchaîne 800 attributions dans l'après-midi
+ * et ne peut pas représenter une carte toutes les cinq minutes. On y met
+ * plusieurs heures ; sur un téléphone de terrain, quelques minutes.
+ */
+const DEVERROUILLAGE_S_DEFAUT = 900;
+
+function dureeDeverrouillageMs() {
+  const config = (etat.refs && etat.refs.config) || {};
+  const valeur = parseInt(config.deverrouillage_s, 10);
+  return (valeur > 0 ? valeur : DEVERROUILLAGE_S_DEFAUT) * 1000;
+}
 
 const $ = function (id) { return document.getElementById(id); };
 
@@ -106,6 +121,7 @@ document.addEventListener('DOMContentLoaded', function () {
   brancher('NFC', brancherNfc);
   brancher('acquittement', brancherAcquittement);
   brancher('verrou', brancherVerrou);
+  brancher('association', brancherAssociation);
 
   chargerReglages();
 
@@ -244,12 +260,15 @@ function synchroniser(manuelle) {
   etat.syncEnCours = true;
   $('etat-reseau').textContent = 'sync…';
 
-  // La première synchronisation dure une quinzaine de secondes sur 2 000
-  // participants. Sans ceci, l'écran resterait sur « CONFIGURATION REQUISE »
-  // pendant tout ce temps, alors que la configuration vient précisément d'être
-  // saisie — on croit à un échec.
-  if (etat.paveSysteme && !etat.blocage) {
-    afficherPave('SYNCHRONISATION…', 'Chargement de la base, patientez', null, true);
+  // La synchronisation ne s'affiche QUE dans le bandeau du haut : c'est une
+  // activité de fond, elle n'a rien à faire dans le pavé de décision que
+  // l'agent regarde entre deux scans.
+  //
+  // Seule exception : la toute première synchronisation, quand la base est
+  // encore vide — l'appareil n'est alors pas utilisable, et il faut le dire.
+  if (etat.paveSysteme && !etat.blocage && etat.base.participants.size === 0) {
+    afficherPave('PREMIÈRE SYNCHRONISATION',
+      'Chargement de la base, patientez', null, true);
   }
 
   let recues = 0;
@@ -286,12 +305,13 @@ function synchroniser(manuelle) {
     .then(function () {
       $('etat-reseau').textContent = 'à jour';
       afficherEcranPret();
+      return verifierPeremption();
       if (manuelle) message(recues + ' fiche(s) mise(s) à jour.');
     })
     .catch(function (erreur) {
       $('etat-reseau').textContent = 'échec sync';
       $('etat-reseau').className = 'alerte-reseau';
-      if (etat.paveSysteme && !etat.blocage) {
+      if (etat.paveSysteme && !etat.blocage && etat.base.participants.size === 0) {
         afficherPave('SYNCHRONISATION IMPOSSIBLE', erreur.message, 'orange', true);
       }
       if (manuelle) message('Synchronisation impossible : ' + erreur.message, 'erreur');
@@ -304,15 +324,70 @@ function synchroniser(manuelle) {
     });
 }
 
+/**
+ * Péremption du terminal.
+ *
+ * Le serveur renvoie `expire_le` (colonne de l'onglet `Terminaux`). Passé ce
+ * moment, l'appareil efface LUI-MÊME la clé API, l'URL et toute la base locale.
+ *
+ * C'est la révocation individuelle : elle évite d'avoir à régénérer la clé API,
+ * qui invaliderait tous les terminaux d'un coup. Un téléphone rendu — ou gardé —
+ * cesse simplement de contenir quoi que ce soit.
+ *
+ * ⚠️ PRÉCAUTION CAPITALE : on n'efface RIEN tant que des scans attendent d'être
+ * envoyés. Effacer un téléphone dont la file n'est pas vide perdrait des
+ * passages définitivement. L'écran le dit, et l'effacement attend.
+ */
+function verifierPeremption() {
+  return DB.lireMeta('expire_le').then(function (expiration) {
+    if (!expiration || Date.now() < expiration) return;
+
+    return DB.compterFileScans().then(function (enAttente) {
+      if (enAttente > 0) {
+        afficherPave('EXPIRÉ — ENVOI EN COURS',
+          enAttente + ' scan(s) restent à remonter avant effacement', 'orange', true);
+        return;
+      }
+      return effacerTerminal();
+    });
+  });
+}
+
+/**
+ * Efface toute trace du terminal : configuration, base, photos, historique.
+ * Appelé uniquement quand la file d'envoi est vide.
+ */
+function effacerTerminal() {
+  clearTimeout(etat.minuteurSync);
+  localStorage.removeItem('api_url');
+  localStorage.removeItem('api_cle');
+  API.configurer('', '', localStorage.getItem('api_terminal') || '');
+
+  return DB.purgerBase()
+    .then(function () { return DB.viderHistorique(); })
+    .then(function () {
+      etat.base = { participants: new Map(), bracelets: new Map() };
+      etat.cartes = [];
+      afficherPave('TERMINAL EXPIRÉ',
+        'Données effacées. Rescannez un QR code de configuration pour réactiver.',
+        'rouge', true);
+      $('identite').className = '';
+      $('repas').className = '';
+      return rafraichirBandeau();
+    });
+}
+
 function rechargerBaseMemoire() {
   return Promise.all([DB.chargerBase(), DB.lireMeta('refs'), DB.lireMeta('point_controle'),
-                      DB.scansRecents(3600000), DB.lireMeta('cartes')])
+                      DB.scansRecents(3600000), DB.lireMeta('cartes'),
+                      DB.lireMeta('peut_associer')])
     .then(function (valeurs) {
       etat.base = valeurs[0];
       etat.refs = valeurs[1] || { droits: {}, formules: {}, services: [], config: {} };
       etat.pointControle = valeurs[2] || '';
       etat.scansRecents = valeurs[3];
       etat.cartes = valeurs[4] || [];
+      etat.peutAssocier = valeurs[5] === true;
       // Les cartes arrivent avec le delta : l'affichage du cadenas doit suivre.
       montrerVue(etat.vueCourante);
     });
@@ -320,8 +395,16 @@ function rechargerBaseMemoire() {
 
 /* ─────────────────────────── Verrou des réglages ─────────────────────────── */
 
+/** Vues réservées, accessibles seulement après présentation d'une carte. */
+const VUES_RESERVEES = ['vue-reglages', 'vue-recherche'];
+
 /**
- * Les réglages ne s'ouvrent qu'après présentation d'une carte STAFF ou ADMIN.
+ * Réglages ET recherche ne s'ouvrent qu'après présentation d'une carte STAFF
+ * ou ADMIN.
+ *
+ * La recherche donne accès à l'identité des participants, à leurs alertes
+ * médicales et — depuis un terminal habilité — à l'attribution des bracelets.
+ * Ce n'est pas un écran de consultation anodin.
  *
  * ⚠️ EXCEPTION INDISPENSABLE : tant que l'application n'est pas configurée, le
  * verrou est inactif. C'est dans les réglages que l'on saisit l'URL et la clé ;
@@ -344,6 +427,15 @@ function chercherCarte(uid) {
   return null;
 }
 
+/** Prépare l'écran de verrou en nommant la fonction que l'on cherchait. */
+function preparerVerrou(vueVisee) {
+  etat.vueDemandee = vueVisee;
+  $('pave-verrou').className = '';
+  $('verrou-titre').textContent = vueVisee === 'vue-recherche'
+    ? 'RECHERCHE VERROUILLÉE' : 'RÉGLAGES VERROUILLÉS';
+  $('verrou-detail').textContent = 'Scanner un bracelet STAFF ou ADMIN';
+}
+
 function tenterDeverrouillage(uid) {
   const carte = chercherCarte(uid);
   if (!carte) {
@@ -355,13 +447,15 @@ function tenterDeverrouillage(uid) {
   }
 
   etat.deverrouillage = {
-    nom: carte.nom, role: carte.role, expire: Date.now() + DEVERROUILLAGE_MS
+    nom: carte.nom, role: carte.role, expire: Date.now() + dureeDeverrouillageMs()
   };
   $('pave-verrou').className = '';
-  $('verrou-titre').textContent = 'RÉGLAGES VERROUILLÉS';
   $('verrou-detail').textContent = 'Scanner un bracelet STAFF ou ADMIN';
   if (navigator.vibrate) navigator.vibrate(60);
-  montrerVue('vue-reglages');
+  // On rouvre l'écran que l'agent voulait, pas systématiquement les réglages :
+  // il a cliqué sur RECHERCHE, il doit atterrir sur la recherche.
+  montrerVue(etat.vueDemandee || 'vue-reglages');
+  etat.vueDemandee = null;
   return true;
 }
 
@@ -412,31 +506,13 @@ function envoyerFileScans() {
 /* ─────────────────────────── Lecture NFC ─────────────────────────── */
 
 function brancherNfc() {
-  // La saisie manuelle est TOUJOURS disponible : un bracelet abîmé, une puce
-  // non compatible NDEF ou un téléphone sans Web NFC ne doivent jamais empêcher
-  // de traiter une personne devant la file.
-  $('btn-basculer-manuel').addEventListener('click', function () {
-    const zone = $('saisie-manuelle');
-    const ouvert = zone.className === 'visible';
-    zone.className = ouvert ? '' : 'visible';
-    if (!ouvert) $('champ-uid-scan').focus();
-  });
-
-  const controler = function () {
-    const saisi = normaliserUid($('champ-uid-scan').value);
-    if (!saisi) { message('Saisissez un UID.', 'erreur'); return; }
-    $('champ-uid-scan').value = '';
-    traiterScan(saisi);
-  };
-  $('btn-scan-manuel').addEventListener('click', controler);
-  $('champ-uid-scan').addEventListener('keydown', function (evenement) {
-    if (evenement.key === 'Enter') controler();
-  });
-
+  // Pas de saisie manuelle d'UID sur l'écran de scan : elle ne sert pas en
+  // pratique, et un cas exceptionnel se traite mieux directement dans le
+  // classeur. Le champ subsiste sur l'écran de verrou, où il reste
+  // indispensable aux appareils sans Web NFC.
   if (!('NDEFReader' in window)) {
     $('btn-nfc').style.display = 'none';
     $('nfc-indispo').style.display = 'block';
-    $('saisie-manuelle').className = 'visible';
     return;
   }
   $('btn-nfc').addEventListener('click', demarrerNfc);
@@ -459,6 +535,10 @@ function demarrerNfc() {
       // Un seul lecteur pour toute l'application : c'est l'écran affiché qui
       // décide de ce que l'on fait de la carte présentée.
       if (etat.vueCourante === 'vue-verrou') tenterDeverrouillage(uid);
+      // Une fiche ouverte ne détourne plus la lecture : il faut avoir cliqué
+      // sur ATTRIBUER. Sinon, présenter un bracelet devant une fiche affichée
+      // le réattribuerait par accident à la personne consultée.
+      else if (etat.association && etat.association.enAttente) attribuerBracelet(uid);
       else traiterScan(uid);
     };
     /**
@@ -499,6 +579,11 @@ function normaliserUid(serie) {
 
 function traiterScan(uid) {
   if (!uid) return;
+
+  // Un vrai scan referme le bloc d'attribution : sans cela, les boutons
+  // resteraient à l'écran sous la décision et se rapporteraient encore à la
+  // fiche consultée juste avant — donc à quelqu'un d'autre.
+  fermerAssociation();
 
   // Un écran bloquant doit être acquitté avant tout nouveau scan… sauf si l'on
   // présente un AUTRE bracelet : la file ne doit pas s'arrêter parce que
@@ -739,26 +824,87 @@ function brancherAcquittement() {
 
 /* ─────────────────────────── Recherche ─────────────────────────── */
 
+/** Plafond d'affichage : au-delà, on annonce le total sans tout dessiner. */
+const MAX_RESULTATS = 200;
+
 function brancherRecherche() {
   let minuteur = null;
-  $('champ-recherche').addEventListener('input', function (evenement) {
+  $('champ-recherche').addEventListener('input', function () {
     clearTimeout(minuteur);
-    const requete = evenement.target.value;
-    minuteur = setTimeout(function () { afficherResultats(requete); }, 120);
+    minuteur = setTimeout(relancerRecherche, 120);
+  });
+
+  // Les filtres SURVIVENT à la consultation d'une fiche et à une attribution.
+  // C'est tout l'intérêt : au guichet, on filtre une fois sur l'école, puis on
+  // descend la file sans jamais retoucher au filtre.
+  $('filtre-ecole').addEventListener('change', function (e) {
+    etat.filtres.ecole = e.target.value;
+    relancerRecherche();
+  });
+  $('filtre-statut').addEventListener('change', function (e) {
+    etat.filtres.statut = e.target.value;
+    relancerRecherche();
   });
 }
 
+/**
+ * Remplit les deux listes déroulantes à partir de la base réellement chargée.
+ *
+ * On repart des valeurs présentes plutôt que d'une liste figée dans le code :
+ * une école ajoutée dans le classeur apparaît d'elle-même après la sync.
+ * La sélection en cours est restaurée — sans quoi chaque synchronisation
+ * remettrait le filtre à zéro sous les doigts de l'opérateur.
+ */
+function remplirFiltres() {
+  [['filtre-ecole', 'ecole', 'Toutes les écoles'],
+   ['filtre-statut', 'statut', 'Tous les statuts']].forEach(function (def) {
+    const select = $(def[0]);
+    const valeurs = DB.valeursDistinctes(etat.base, def[1]);
+    const signature = valeurs.join('\u001f');
+    // On ne redessine les options que si la base a changé — mais on réaligne
+    // TOUJOURS la sélection affichée sur l'état interne, sinon la liste
+    // continue d'annoncer un filtre qui ne s'applique plus.
+    if (select.dataset.signature !== signature) {
+      select.dataset.signature = signature;
+      select.innerHTML = '<option value="">' + echapper(def[2]) + '</option>' +
+        valeurs.map(function (v) {
+          return '<option value="' + echapper(v) + '">' + echapper(v) + '</option>';
+        }).join('');
+    }
+    select.value = etat.filtres[def[1]] || '';
+    // Le filtre mémorisé peut avoir disparu de la base : on ne laisse pas un
+    // filtre fantôme masquer tout le monde.
+    if (select.value !== (etat.filtres[def[1]] || '')) etat.filtres[def[1]] = '';
+  });
+}
+
+function relancerRecherche() {
+  // Un filtre qui persiste doit se VOIR : sinon, l'opérateur suivant cherche un
+  // nom, ne le trouve pas, et ne comprend pas qu'une école est encore filtrée.
+  $('filtre-ecole').className = etat.filtres.ecole ? 'actif' : '';
+  $('filtre-statut').className = etat.filtres.statut ? 'actif' : '';
+  afficherResultats($('champ-recherche').value);
+}
+
 function afficherResultats(requete) {
-  const resultats = DB.rechercher(etat.base, requete, 20);
-  if (!resultats.length) {
-    $('resultats').innerHTML = requete.length < 2
-      ? '<div class="note">Saisissez au moins deux caractères.</div>'
+  const trouves = DB.rechercher(etat.base, requete, MAX_RESULTATS, etat.filtres);
+  const filtreActif = !!(etat.filtres.ecole || etat.filtres.statut);
+
+  if (!trouves.total) {
+    $('compte-resultats').textContent = '';
+    $('resultats').innerHTML = (String(requete).trim().length < 2 && !filtreActif)
+      ? '<div class="note">Saisissez au moins deux caractères, ou choisissez un filtre.</div>'
       : '<div class="note">Aucun résultat.</div>';
     return;
   }
-  $('resultats').innerHTML = resultats.map(function (p) {
+
+  $('compte-resultats').textContent = trouves.total > trouves.liste.length
+    ? trouves.total + ' résultats — ' + trouves.liste.length + ' premiers affichés'
+    : trouves.total + (trouves.total > 1 ? ' résultats' : ' résultat');
+
+  $('resultats').innerHTML = trouves.liste.map(function (p) {
     return '<div class="resultat" data-numero="' + echapper(p.numero) + '">' +
-           '<div class="nom">' + echapper(p.prenom + ' ' + p.nom) + '</div>' +
+           '<div class="nom">' + echapper(p.nom + ' ' + p.prenom) + '</div>' +
            '<div class="meta">' + echapper(p.numero) + ' · ' + echapper(p.statut || '') +
            (p.ecole ? ' · ' + echapper(p.ecole) : '') + '</div></div>';
   }).join('');
@@ -778,7 +924,8 @@ function afficherFiche(numero) {
   const p = etat.base.participants.get(numero);
   if (!p) return;
   montrerVue('vue-scan');
-  afficherPave('CONSULTATION', 'Aucun passage enregistré', null);
+  afficherPave('CONSULTATION', 'Aucun passage enregistré', null, true);
+  etat.ficheCourante = p;
 
   $('alerte').textContent = p.commentaire ? '⚠ ' + p.commentaire : '';
   $('alerte').className = p.commentaire ? 'visible' : '';
@@ -790,6 +937,203 @@ function afficherFiche(numero) {
   $('repas').className = '';
   $('acquittement').className = '';
   afficherPhoto(p.numero);
+
+  // Le guichet d'accueil enchaîne : on cherche la personne, on lui attribue son
+  // bracelet dans la foulée. C'est un geste de plus sur un flux qui existe déjà,
+  // pas une procédure séparée.
+  if (etat.peutAssocier) ouvrirAssociation(p);
+  else fermerAssociation();
+}
+
+/* ─────────────────────── Attribution de bracelet ─────────────────────── */
+
+/** Bracelet ACTIF actuellement porté par ce participant, s'il en a un. */
+function braceletActif(numero) {
+  let trouve = null;
+  etat.base.bracelets.forEach(function (b) {
+    if (!trouve && b.numero === numero && b.statut === 'ACTIF') trouve = b;
+  });
+  return trouve;
+}
+
+function ouvrirAssociation(participant) {
+  etat.association = { participant: participant, enAttente: false };
+  $('association').className = 'visible';
+  majEtatAssociation('', '');
+  rafraichirBoutonsAssociation();
+}
+
+/**
+ * Les deux boutons disent l'état du participant sans qu'on ait à le lire.
+ *
+ * Un bouton grisé et cadenassé vaut mieux qu'un bouton absent : l'opérateur
+ * voit que la fonction existe et comprend pourquoi elle ne s'applique pas —
+ * un bouton qui disparaît, lui, passe pour une panne.
+ */
+function rafraichirBoutonsAssociation() {
+  if (!etat.association) return;
+  const porte = braceletActif(etat.association.participant.numero);
+  const attribuer = $('btn-attribuer');
+  const suspendre = $('btn-suspendre');
+
+  if (etat.association.enAttente) {
+    attribuer.textContent = 'ANNULER';
+    attribuer.className = 'principal attente';
+  } else {
+    attribuer.textContent = porte ? 'ATTRIBUER UN NOUVEAU BRACELET'
+                                  : 'ATTRIBUER UN BRACELET';
+    attribuer.className = 'principal';
+  }
+
+  suspendre.textContent = 'SUSPENDRE LE BRACELET';
+  suspendre.className = porte ? '' : 'inerte';
+  suspendre.disabled = !porte || etat.association.enAttente;
+}
+
+function fermerAssociation() {
+  etat.association = null;
+  $('association').className = '';
+}
+
+function majEtatAssociation(texte, niveau) {
+  $('assoc-etat').textContent = texte;
+  $('assoc-etat').className = niveau || '';
+}
+
+/** Démarre (ou arrête) l'attente d'un bracelet à attribuer. */
+function basculerAttente() {
+  if (!etat.association) return;
+  if (etat.association.enAttente) {
+    etat.association.enAttente = false;
+    majEtatAssociation('', '');
+    rafraichirBoutonsAssociation();
+    return;
+  }
+  // Sans Web NFC, il n'y a plus aucun moyen de saisir un bracelet : autant le
+  // dire tout de suite plutôt que de laisser attendre devant un écran muet.
+  if (!('NDEFReader' in window)) {
+    majEtatAssociation('Ce navigateur ne lit pas le NFC — utilisez un téléphone '
+      + 'Android sous Chrome pour attribuer un bracelet', 'erreur');
+    return;
+  }
+  etat.association.enAttente = true;
+  const porte = braceletActif(etat.association.participant.numero);
+  majEtatAssociation(porte
+    ? 'Approchez le nouveau bracelet — l\'ancien sera désactivé'
+    : 'Approchez le bracelet à attribuer', '');
+  rafraichirBoutonsAssociation();
+  if (!etat.lecteurNfc) demarrerNfc();
+}
+
+/**
+ * Suspension du bracelet porté.
+ *
+ * Confirmation exigée : l'action bloque la personne à TOUS les points de
+ * contrôle, et une fausse manœuvre au guichet se paierait à l'entrée du site.
+ */
+function suspendreBracelet() {
+  if (!etat.association) return;
+  const participant = etat.association.participant;
+  const porte = braceletActif(participant.numero);
+  if (!porte) return;
+  if (!confirm('Suspendre le bracelet de ' + participant.prenom + ' ' +
+               participant.nom + ' ?\n\nIl sera refusé à tous les points de ' +
+               'contrôle dès la synchronisation suivante.')) return;
+
+  majEtatAssociation('Suspension en cours…', '');
+  API.post({ action: 'update_status', terminal: localStorage.getItem('api_terminal'),
+             uid: porte.uid, numero: participant.numero, statut: 'SUSPENDU' }, 20000)
+    .then(function () {
+      porte.statut = 'SUSPENDU';
+      majEtatAssociation('✓ Bracelet suspendu', 'succes');
+      if (navigator.vibrate) navigator.vibrate(60);
+      rafraichirBoutonsAssociation();
+    })
+    .catch(function (erreur) {
+      // Hors ligne, la suspension ne vaudrait que pour ce téléphone — c'est
+      // exactement l'inverse du but recherché.
+      majEtatAssociation('Échec : ' + erreur.message +
+                         ' — le bracelet reste ACTIF, prévenez le PC', 'erreur');
+      if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+    });
+}
+
+/**
+ * Attribue un bracelet au participant affiché.
+ *
+ * L'opération est autorisée par TERMINAL (colonne `peut_associer` de l'onglet
+ * `Terminaux`), pas par personne connectée : un guichet traite des centaines de
+ * personnes d'affilée, ressaisir une phrase de passe toutes les quinze minutes
+ * serait inapplicable.
+ */
+function attribuerBracelet(uid) {
+  if (!etat.association) return;
+  etat.association.enAttente = false;
+  rafraichirBoutonsAssociation();
+  const participant = etat.association.participant;
+  const propre = normaliserUid(uid);
+  if (!propre) { majEtatAssociation('UID vide', 'erreur'); return; }
+
+  // Le bracelet est-il déjà attribué à quelqu'un d'autre ? On le dit AVANT
+  // d'écrire : au guichet, deux personnes repartiraient avec le même bracelet.
+  const existant = etat.base.bracelets.get(propre);
+  if (existant && existant.numero && existant.numero !== participant.numero
+      && existant.statut === 'ACTIF') {
+    const autre = etat.base.participants.get(existant.numero);
+    majEtatAssociation('Bracelet déjà attribué à ' +
+      (autre ? autre.prenom + ' ' + autre.nom : existant.numero) +
+      ' — prenez-en un autre', 'erreur');
+    if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+    // On rouvre l'attente : l'opérateur va présenter un autre bracelet tout de
+    // suite, lui faire recliquer sur ATTRIBUER n'aurait aucun sens.
+    etat.association.enAttente = true;
+    rafraichirBoutonsAssociation();
+    return;
+  }
+
+  majEtatAssociation('Attribution en cours…', '');
+  API.post({ action: 'update_status', terminal: localStorage.getItem('api_terminal'),
+             uid: propre, numero: participant.numero, statut: 'ACTIF' }, 20000)
+    .then(function (reponse) {
+      majEtatAssociation('✓ Bracelet attribué à ' + participant.prenom + ' ' +
+                         participant.nom, 'succes');
+      if (navigator.vibrate) navigator.vibrate(60);
+
+      // On l'ajoute tout de suite en mémoire : le bracelet doit être reconnu
+      // immédiatement, sans attendre la synchronisation suivante.
+      etat.base.bracelets.set(propre,
+        { uid: propre, numero: participant.numero, statut: 'ACTIF' });
+      if (reponse.ancien_bracelet_neutralise) {
+        const ancien = etat.base.bracelets.get(reponse.ancien_bracelet_neutralise);
+        if (ancien) ancien.statut = 'PERDU';
+      }
+
+      rafraichirBoutonsAssociation();
+      // Retour à la liste, FILTRES CONSERVÉS : l'opérateur enchaîne la personne
+      // suivante de la file sans avoir à re-sélectionner son école.
+      setTimeout(function () {
+        const nom = participant.prenom + ' ' + participant.nom;
+        fermerAssociation();
+        montrerVue('vue-recherche');
+        $('champ-recherche').value = '';
+        relancerRecherche();
+        message('✓ Bracelet attribué à ' + nom, 'succes');
+      }, 1200);
+    })
+    .catch(function (erreur) {
+      // Hors ligne, l'attribution est IMPOSSIBLE : elle doit être connue de
+      // tous les postes, pas seulement de ce téléphone. On le dit franchement
+      // plutôt que de laisser croire à un succès.
+      majEtatAssociation('Échec : ' + erreur.message +
+                         ' — réessayez, ou notez le cas sur papier', 'erreur');
+      if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+      rafraichirBoutonsAssociation();
+    });
+}
+
+function brancherAssociation() {
+  $('btn-attribuer').addEventListener('click', basculerAttente);
+  $('btn-suspendre').addEventListener('click', suspendreBracelet);
 }
 
 /* ─────────────────────────── Photos ─────────────────────────── */
@@ -905,9 +1249,10 @@ function brancherNavigation() {
 }
 
 function montrerVue(identifiant) {
-  // Interception : les réglages passent par l'écran de verrou tant qu'aucune
-  // carte STAFF ou ADMIN n'a été présentée.
-  if (identifiant === 'vue-reglages' && reglagesVerrouilles()) {
+  // Interception : les vues réservées passent par l'écran de verrou tant
+  // qu'aucune carte STAFF ou ADMIN n'a été présentée.
+  if (VUES_RESERVEES.indexOf(identifiant) !== -1 && reglagesVerrouilles()) {
+    preparerVerrou(identifiant);
     identifiant = 'vue-verrou';
   }
   etat.vueCourante = identifiant;
@@ -915,22 +1260,29 @@ function montrerVue(identifiant) {
   Array.prototype.forEach.call(document.querySelectorAll('.vue'), function (vue) {
     vue.className = 'vue' + (vue.id === identifiant ? ' visible' : '');
   });
-  // L'onglet RÉGLAGES reste visuellement actif même sur l'écran de verrou :
+  // L'onglet d'origine reste visuellement actif même sur l'écran de verrou :
   // l'agent doit comprendre où il est, pas se croire perdu.
-  const ongletActif = identifiant === 'vue-verrou' ? 'vue-reglages' : identifiant;
+  const ongletActif = identifiant === 'vue-verrou'
+    ? (etat.vueDemandee || 'vue-reglages') : identifiant;
   const verrouille = reglagesVerrouilles();
   Array.prototype.forEach.call(document.querySelectorAll('nav button'), function (bouton) {
     const classes = [];
     if (bouton.dataset.vue === ongletActif) classes.push('actif');
     // Le cadenas dit que l'onglet EXISTE mais demande une carte — un bouton
     // simplement inerte laisserait croire à une panne.
-    if (bouton.dataset.vue === 'vue-reglages' && verrouille) classes.push('verrouille');
+    if (VUES_RESERVEES.indexOf(bouton.dataset.vue) !== -1 && verrouille) {
+      classes.push('verrouille');
+    }
     bouton.className = classes.join(' ');
   });
 
   if (identifiant === 'vue-reglages') {
     rafraichirStatistiques();
     rafraichirBanniereDeverrouillage();
+  }
+  if (identifiant === 'vue-recherche') {
+    remplirFiltres();
+    relancerRecherche();
   }
 }
 

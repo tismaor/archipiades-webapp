@@ -115,8 +115,11 @@ function evaluerScan(e) {
   const alerte = participant.commentaire ? String(participant.commentaire) : '';
 
   // --- 2. Verrouillage d'urgence -------------------------------------------
-  // Le Staff continue de passer : ce sont eux qui gèrent l'incident.
-  if (verrouillage.actif && normaliser(participant.statut) !== 'staff') {
+  // Certains statuts continuent de passer : ceux qui gèrent l'incident, et les
+  // invités qu'on ne veut pas bloquer à un poste. La liste vient de l'onglet
+  // `Config` — le terrain tranchera peut-être autrement, et cela ne doit pas
+  // exiger une modification du code.
+  if (verrouillage.actif && !statutFranchit(participant.statut, config)) {
     return decision(ETATS.VERROUILLE, {
       participant: participant,
       detail: verrouillage.motif || 'Verrouillage d\'urgence',
@@ -350,6 +353,19 @@ function heure(horodatage) {
   const d = new Date(horodatage);
   return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' +
          (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+}
+
+/**
+ * Ce statut franchit-il un verrouillage d'urgence ?
+ * Défaut « Staff » si la configuration n'est pas descendue — le plus restrictif.
+ */
+function statutFranchit(statut, config) {
+  const autorises = (config && config.statuts_verrouillage) || ['Staff'];
+  const cible = normaliser(statut);
+  for (let i = 0; i < autorises.length; i++) {
+    if (normaliser(autorises[i]) === cible) return true;
+  }
+  return false;
 }
 
 function normaliser(valeur) {

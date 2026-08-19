@@ -168,6 +168,29 @@ nav button.actif { color: var(--texte); border-top: 2px solid var(--texte); }
 #verrou-manuel.visible { display: block; }
 #saisie-manuelle { display: none; }
 #saisie-manuelle.visible { display: block; }
+
+/* ── Attribution de bracelet (guichet d'accueil) ───────────────────────── */
+#association { display: none; margin-top: 16px; }
+#association.visible { display: block; }
+#assoc-etat { font-size: 15px; margin-bottom: 4px; min-height: 0; }
+#assoc-etat:not(:empty) { margin-bottom: 10px; }
+#assoc-etat.succes { color: var(--vert); font-weight: 700; }
+#assoc-etat.erreur { color: var(--orange); }
+#assoc-etat.attente { color: var(--gris); }
+/* Un bouton grisé doit dire POURQUOI il est inerte, d'où le cadenas. */
+button.inerte { color: var(--gris-sombre); border-color: var(--gris-sombre); cursor: default; }
+button.inerte::after { content: " 🔒"; font-size: 11px; }
+button.attente { border-color: var(--orange); color: var(--orange); }
+
+/* ── Filtres de recherche ──────────────────────────────────────────────── */
+.filtres { display: flex; gap: 8px; }
+.filtres select {
+  flex: 1; padding: 12px 8px; background: var(--fond); color: var(--texte);
+  border: 1px solid var(--gris); font-family: inherit; font-size: 14px;
+  appearance: none; border-radius: 0;
+}
+.filtres select.actif { border-color: var(--texte); border-width: 2px; }
+#compte-resultats { font-size: 12px; color: var(--gris); margin-top: 12px; }
 #banniere-deverrouille {
   display: none; padding: 10px; margin-bottom: 12px;
   border: 1px solid var(--gris); font-size: 12px; color: var(--gris);
@@ -236,6 +259,12 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
       </div>
     </div>
 
+    <div id="association">
+      <div id="assoc-etat"></div>
+      <button class="principal" id="btn-attribuer">ATTRIBUER UN BRACELET</button>
+      <button id="btn-suspendre">SUSPENDRE LE BRACELET</button>
+    </div>
+
     <div id="repas">
       <div class="titre">Régime</div>
       <div class="regime" id="regime">—</div>
@@ -252,16 +281,6 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
 
     <button class="principal" id="btn-nfc">DÉMARRER LA LECTURE NFC</button>
 
-    <button class="discret" id="btn-basculer-manuel">SAISIE MANUELLE D'UN UID</button>
-    <div id="saisie-manuelle">
-      <input id="champ-uid-scan" type="text" autocomplete="off" autocapitalize="characters"
-             spellcheck="false" placeholder="04:a1:b2:c3:d4:e5:f6">
-      <button id="btn-scan-manuel">CONTRÔLER</button>
-      <div class="note">
-        Pour un bracelet abîmé qui refuse de se lire, ou une puce non compatible
-        NDEF. Le passage est enregistré exactement comme un scan.
-      </div>
-    </div>
     <div id="nfc-indispo" class="avertissement" style="display:none">
       Web NFC n'est pas disponible sur ce navigateur.<br>
       Il n'existe que sur <b>Chrome pour Android</b> : sur iPhone, ou dans un
@@ -272,8 +291,13 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
 
   <!-- ── Vue recherche ────────────────────────────────────────────────── -->
   <section id="vue-recherche" class="vue">
-    <input id="champ-recherche" type="search" placeholder="Nom, prénom, numéro ou école…"
+    <div class="filtres">
+      <select id="filtre-ecole"><option value="">Toutes les écoles</option></select>
+      <select id="filtre-statut"><option value="">Tous les statuts</option></select>
+    </div>
+    <input id="champ-recherche" type="search" placeholder="Nom, prénom ou numéro…"
            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <div id="compte-resultats"></div>
     <div id="resultats"></div>
   </section>
 
