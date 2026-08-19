@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>ARCHIPIADES — Contrôle d'accès</title>
+<link rel="manifest" href="manifest.json">
+<style>
+/*
+ * Charte terminal monochrome.
+ *
+ * Fond noir, texte blanc, police à chasse fixe. LA COULEUR EST RÉSERVÉE À
+ * L'INFORMATION CRITIQUE — vert autorisé, rouge refusé, orange contrôle
+ * approfondi, jaune alerte médicale. Rien d'autre n'est coloré, pour qu'un
+ * agent qui voit du rouge sache immédiatement que quelque chose ne va pas,
+ * sans avoir à lire.
+ *
+ * Seule exception : la photo d'identité reste en couleur, l'identification
+ * visuelle y gagne trop.
+ */
+:root {
+  --fond: #000;
+  --texte: #fff;
+  --gris: #8a8a8a;
+  --gris-sombre: #2a2a2a;
+  --vert: #00c853;
+  --rouge: #d50000;
+  --orange: #ff6d00;
+  --jaune: #ffd600;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body {
+  height: 100%;
+  background: var(--fond);
+  color: var(--texte);
+  font-family: "SF Mono", "Roboto Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-size: 16px;
+  overscroll-behavior: none;
+}
+body { display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+
+/* ── Bandeau d'état permanent ─────────────────────────────────────────── */
+#bandeau {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; border-bottom: 1px solid var(--gris-sombre);
+  font-size: 12px; color: var(--gris); flex: 0 0 auto;
+}
+#bandeau .actif { color: var(--texte); }
+#bandeau .alerte-reseau { color: var(--orange); }
+
+/* ── Zone principale ──────────────────────────────────────────────────── */
+main { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.vue { display: none; padding: 16px; }
+.vue.visible { display: block; }
+
+/* ── Pavé de décision ─────────────────────────────────────────────────── */
+#pave {
+  padding: 24px 16px; text-align: center;
+  border: 2px solid var(--gris-sombre);
+  background: var(--fond);
+}
+#pave.vert   { background: var(--vert);   color: #000; border-color: var(--vert); }
+#pave.rouge  { background: var(--rouge);  color: #fff; border-color: var(--rouge); }
+#pave.orange { background: var(--orange); color: #000; border-color: var(--orange); }
+#pave-libelle { font-size: 26px; font-weight: 700; line-height: 1.15; letter-spacing: -0.5px; }
+#pave-detail { font-size: 14px; margin-top: 8px; opacity: 0.85; }
+
+/* Alerte médicale : distincte du pavé, elle ne doit jamais être masquée. */
+#alerte {
+  display: none; margin-top: 12px; padding: 12px;
+  background: var(--jaune); color: #000; font-weight: 700; font-size: 15px;
+}
+#alerte.visible { display: block; }
+
+/* ── Identité ─────────────────────────────────────────────────────────── */
+#identite { display: none; margin-top: 16px; }
+#identite.visible { display: flex; gap: 14px; align-items: flex-start; }
+/* La miniature est affichée d'office : une vérification visuelle qui exige un
+   appui supplémentaire n'est pas faite sous la pression de la file. */
+#photo-zone {
+  position: relative; width: 108px; height: 140px; flex: 0 0 auto;
+  background: var(--gris-sombre); border: 1px solid var(--gris-sombre);
+}
+#photo { width: 100%; height: 100%; object-fit: cover; display: none; }
+#photo.visible { display: block; }
+/* Cadre explicite plutôt qu'une image cassée : l'agent doit comprendre que la
+   photo n'a pas été embarquée, et non croire à une panne. */
+#photo-absente {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; text-align: center; padding: 8px;
+  font-size: 10px; line-height: 1.4; color: var(--gris); letter-spacing: 0.5px;
+}
+#photo-absente.cache { display: none; }
+#infos { flex: 1 1 auto; min-width: 0; }
+#infos .nom { font-size: 21px; font-weight: 700; word-break: break-word; }
+#infos .ligne { font-size: 14px; color: var(--gris); margin-top: 4px; }
+#infos .ligne b { color: var(--texte); font-weight: 400; }
+
+/* ── Bloc repas ───────────────────────────────────────────────────────── */
+#repas { display: none; margin-top: 16px; border: 1px solid var(--gris-sombre); padding: 12px; }
+#repas.visible { display: block; }
+#repas .titre { font-size: 12px; color: var(--gris); text-transform: uppercase; }
+#repas .regime { font-size: 24px; font-weight: 700; margin: 6px 0 12px; }
+#repas .regime.vegetarien { color: var(--jaune); }
+.services { display: flex; gap: 8px; }
+.service {
+  flex: 1; text-align: center; padding: 10px 4px;
+  border: 1px solid var(--gris-sombre); font-size: 13px; color: var(--gris);
+}
+.service.consomme { background: var(--gris-sombre); color: var(--texte); }
+.service.consomme::after { content: " ✓"; }
+.service.courant { border-color: var(--texte); color: var(--texte); }
+
+/* ── Acquittement bloquant ────────────────────────────────────────────── */
+#acquittement {
+  display: none; margin-top: 16px; padding: 16px; text-align: center;
+  border: 2px dashed var(--orange);
+}
+#acquittement.visible { display: block; }
+#acquittement .compte { font-size: 13px; color: var(--gris); margin-top: 8px; }
+
+/* ── Boutons et champs ────────────────────────────────────────────────── */
+button, .bouton {
+  display: block; width: 100%; padding: 15px;
+  background: var(--fond); color: var(--texte);
+  border: 1px solid var(--texte); font-family: inherit; font-size: 15px;
+  cursor: pointer; margin-top: 10px;
+}
+button:active { background: var(--texte); color: var(--fond); }
+button.principal { border-width: 2px; font-weight: 700; }
+button.discret { border-color: var(--gris-sombre); color: var(--gris); }
+button:disabled { opacity: 0.4; }
+input {
+  width: 100%; padding: 14px; margin-top: 10px;
+  background: var(--fond); color: var(--texte);
+  border: 1px solid var(--gris); font-family: inherit; font-size: 16px;
+}
+label { display: block; margin-top: 16px; font-size: 12px; color: var(--gris); }
+
+/* ── Résultats de recherche ───────────────────────────────────────────── */
+.resultat { padding: 12px; border-bottom: 1px solid var(--gris-sombre); cursor: pointer; }
+.resultat:active { background: var(--gris-sombre); }
+.resultat .nom { font-size: 17px; }
+.resultat .meta { font-size: 12px; color: var(--gris); margin-top: 2px; }
+
+/* ── Barre de navigation ──────────────────────────────────────────────── */
+nav {
+  display: flex; border-top: 1px solid var(--gris-sombre); flex: 0 0 auto;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+nav button {
+  flex: 1; margin: 0; border: none; border-right: 1px solid var(--gris-sombre);
+  padding: 14px 4px; font-size: 12px; color: var(--gris);
+}
+nav button:last-child { border-right: none; }
+nav button.actif { color: var(--texte); border-top: 2px solid var(--texte); }
+
+/* ── Verrou des réglages ───────────────────────────────────────────────── */
+#pave-verrou {
+  padding: 28px 16px; text-align: center; border: 2px solid var(--gris-sombre);
+}
+#pave-verrou.rouge { background: var(--rouge); color: #fff; border-color: var(--rouge); }
+#pave-verrou.rouge #verrou-detail { color: #fff; opacity: 0.85; }
+#verrou-titre { font-size: 22px; font-weight: 700; }
+#verrou-detail { font-size: 14px; color: var(--gris); margin-top: 8px; }
+#verrou-manuel { display: none; margin-top: 20px; }
+#verrou-manuel.visible { display: block; }
+#saisie-manuelle { display: none; }
+#saisie-manuelle.visible { display: block; }
+#banniere-deverrouille {
+  display: none; padding: 10px; margin-bottom: 12px;
+  border: 1px solid var(--gris); font-size: 12px; color: var(--gris);
+}
+#banniere-deverrouille.visible { display: block; }
+
+/* Bandeau de panne : une erreur ne doit jamais être muette. */
+#panne {
+  display: none; padding: 12px; background: var(--rouge); color: #fff;
+  font-size: 13px; line-height: 1.4; flex: 0 0 auto;
+}
+#panne.visible { display: block; }
+
+/* Onglet verrouillé : l'agent doit COMPRENDRE, pas se heurter à un bouton mort. */
+nav button.verrouille { color: var(--gris-sombre); }
+nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
+
+/* Message transitoire : jamais de boîte modale, qui figerait la file. */
+#message {
+  display: none; position: fixed; left: 12px; right: 12px;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  padding: 12px; background: var(--gris-sombre); color: var(--texte);
+  border: 1px solid var(--gris); font-size: 13px; z-index: 10;
+}
+#message.visible { display: block; }
+#message.erreur { border-color: var(--orange); color: var(--orange); }
+
+.avertissement { border: 1px solid var(--orange); color: var(--orange); padding: 12px; margin-top: 12px; font-size: 13px; }
+.note { font-size: 12px; color: var(--gris); margin-top: 8px; line-height: 1.5; }
+.stat { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--gris-sombre); font-size: 14px; }
+.stat span:last-child { color: var(--gris); }
+h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bottom: 8px; font-weight: 400; }
+</style>
+</head>
+<body>
+
+<div id="panne"></div>
+
+<div id="bandeau">
+  <span id="etat-terminal">—</span>
+  <span id="etat-reseau">hors ligne</span>
+  <span id="etat-file">0 en attente</span>
+</div>
+
+<main>
+
+  <!-- ── Vue scan ─────────────────────────────────────────────────────── -->
+  <section id="vue-scan" class="vue visible">
+    <div id="pave">
+      <div id="pave-libelle">PRÊT</div>
+      <div id="pave-detail">Approchez un bracelet</div>
+    </div>
+
+    <div id="alerte"></div>
+
+    <div id="identite">
+      <div id="photo-zone">
+        <img id="photo" alt="Photo d'identité">
+        <div id="photo-absente">PHOTO NON<br>EMBARQUÉE</div>
+      </div>
+      <div id="infos">
+        <div class="nom" id="nom">—</div>
+        <div class="ligne" id="ligne-numero"></div>
+        <div class="ligne" id="ligne-statut"></div>
+        <div class="ligne" id="ligne-ecole"></div>
+      </div>
+    </div>
+
+    <div id="repas">
+      <div class="titre">Régime</div>
+      <div class="regime" id="regime">—</div>
+      <div class="titre">Repas</div>
+      <div class="services" id="services"></div>
+      <div class="note" id="formule"></div>
+    </div>
+
+    <div id="acquittement">
+      <div>Contrôle approfondi requis</div>
+      <button class="principal" id="btn-acquitter">ACQUITTER ET CONTINUER</button>
+      <div class="compte" id="compte-a-rebours"></div>
+    </div>
+
+    <button class="principal" id="btn-nfc">DÉMARRER LA LECTURE NFC</button>
+
+    <button class="discret" id="btn-basculer-manuel">SAISIE MANUELLE D'UN UID</button>
+    <div id="saisie-manuelle">
+      <input id="champ-uid-scan" type="text" autocomplete="off" autocapitalize="characters"
+             spellcheck="false" placeholder="04:a1:b2:c3:d4:e5:f6">
+      <button id="btn-scan-manuel">CONTRÔLER</button>
+      <div class="note">
+        Pour un bracelet abîmé qui refuse de se lire, ou une puce non compatible
+        NDEF. Le passage est enregistré exactement comme un scan.
+      </div>
+    </div>
+    <div id="nfc-indispo" class="avertissement" style="display:none">
+      Web NFC n'est pas disponible sur ce navigateur.<br>
+      Il n'existe que sur <b>Chrome pour Android</b> : sur iPhone, ou dans un
+      autre navigateur, utilisez la recherche manuelle. C'est une limite du
+      navigateur, pas de l'application.
+    </div>
+  </section>
+
+  <!-- ── Vue recherche ────────────────────────────────────────────────── -->
+  <section id="vue-recherche" class="vue">
+    <input id="champ-recherche" type="search" placeholder="Nom, prénom, numéro ou école…"
+           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <div id="resultats"></div>
+  </section>
+
+  <!-- ── Verrou des réglages ──────────────────────────────────────────── -->
+  <section id="vue-verrou" class="vue">
+    <div id="pave-verrou">
+      <div id="verrou-titre">RÉGLAGES VERROUILLÉS</div>
+      <div id="verrou-detail">Scanner un bracelet STAFF ou ADMIN</div>
+    </div>
+    <button class="principal" id="btn-verrou-nfc">SCANNER UN BRACELET STAFF</button>
+    <div id="verrou-manuel">
+      <label for="champ-uid-carte">Ou saisir l'UID de la carte</label>
+      <input id="champ-uid-carte" type="text" autocomplete="off" autocapitalize="characters"
+             spellcheck="false" placeholder="04A1B2C3D4E5F6">
+      <button id="btn-verrou-uid">DÉVERROUILLER</button>
+    </div>
+    <div class="note">
+      Le déverrouillage dure quelques minutes, puis se referme seul. Un UID NTAG
+      n'étant pas un secret, ce verrou empêche une fausse manœuvre d'un bénévole,
+      pas une intrusion déterminée — les opérations réellement sensibles restent
+      vérifiées par le serveur.
+    </div>
+  </section>
+
+  <!-- ── Vue réglages ─────────────────────────────────────────────────── -->
+  <section id="vue-reglages" class="vue">
+    <div id="banniere-deverrouille"></div>
+    <h2>Connexion au backend</h2>
+    <label for="champ-url">URL de déploiement (…/exec)</label>
+    <input id="champ-url" type="url" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
+    <label for="champ-cle">Clé API</label>
+    <input id="champ-cle" type="text" autocomplete="off">
+    <label for="champ-terminal">Identifiant du terminal</label>
+    <input id="champ-terminal" type="text" autocomplete="off" placeholder="WEB-01">
+    <button class="principal" id="btn-enregistrer">ENREGISTRER ET SYNCHRONISER</button>
+
+    <h2 style="margin-top:28px">État local</h2>
+    <div class="stat"><span>Participants</span><span id="stat-participants">—</span></div>
+    <div class="stat"><span>Bracelets</span><span id="stat-bracelets">—</span></div>
+    <div class="stat"><span>Photos en cache</span><span id="stat-photos">—</span></div>
+    <div class="stat"><span>Scans en attente</span><span id="stat-attente">—</span></div>
+    <div class="stat"><span>Dernière synchronisation</span><span id="stat-sync">—</span></div>
+    <div class="stat"><span>Point de contrôle</span><span id="stat-point">—</span></div>
+
+    <button id="btn-sync">SYNCHRONISER MAINTENANT</button>
+    <button id="btn-photos">PRÉCHARGER LES PHOTOS</button>
+    <div class="note">
+      Le préchargement télécharge toutes les miniatures (~12 ko chacune) pour un
+      fonctionnement totalement hors ligne. <b>À faire en Wi-Fi</b>, au briefing
+      des bénévoles : environ 60 Mo pour 5 000 participants.
+    </div>
+
+    <button class="discret" id="btn-purger">EFFACER LA BASE LOCALE</button>
+    <div class="note">
+      Les scans en attente d'envoi sont conservés : une purge ne doit jamais
+      faire disparaître un passage non remonté.
+    </div>
+  </section>
+
+</main>
+
+<div id="message"></div>
+
+<nav>
+  <button data-vue="vue-scan" class="actif">SCAN</button>
+  <button data-vue="vue-recherche">RECHERCHE</button>
+  <button data-vue="vue-reglages">RÉGLAGES</button>
+</nav>
+
+<script src="rules.js"></script>
+<script src="db.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
