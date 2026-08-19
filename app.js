@@ -38,7 +38,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 6;
+const VERSION_APP = 7;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -427,20 +427,28 @@ function chercherCarte(uid) {
   return null;
 }
 
-/** Prépare l'écran de verrou en nommant la fonction que l'on cherchait. */
+/**
+ * Prépare l'écran de verrou en nommant la fonction que l'on cherchait.
+ *
+ * Deux messages plutôt qu'un : l'écran, pour qui regarde ; le message flottant,
+ * pour qui vient d'appuyer et fixe encore le bas de l'écran. Sans cela un
+ * bénévole tape trois fois sur l'onglet sans comprendre pourquoi rien ne bouge.
+ */
 function preparerVerrou(vueVisee) {
   etat.vueDemandee = vueVisee;
+  const nom = vueVisee === 'vue-recherche' ? 'RECHERCHE' : 'RÉGLAGES';
   $('pave-verrou').className = '';
   $('verrou-titre').textContent = vueVisee === 'vue-recherche'
     ? 'RECHERCHE VERROUILLÉE' : 'RÉGLAGES VERROUILLÉS';
-  $('verrou-detail').textContent = 'Scanner un bracelet STAFF ou ADMIN';
+  $('verrou-detail').textContent = 'Scannez un bracelet STAFF pour déverrouiller';
+  message('🔒 ' + nom + ' — scannez un bracelet STAFF pour déverrouiller.');
 }
 
 function tenterDeverrouillage(uid) {
   const carte = chercherCarte(uid);
   if (!carte) {
     $('verrou-titre').textContent = 'CARTE NON RECONNUE';
-    $('verrou-detail').textContent = 'Cette carte n\'ouvre pas les réglages';
+    $('verrou-detail').textContent = 'Ce bracelet n\'est pas déclaré comme STAFF';
     $('pave-verrou').className = 'rouge';
     if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
     return false;
@@ -450,7 +458,7 @@ function tenterDeverrouillage(uid) {
     nom: carte.nom, role: carte.role, expire: Date.now() + dureeDeverrouillageMs()
   };
   $('pave-verrou').className = '';
-  $('verrou-detail').textContent = 'Scanner un bracelet STAFF ou ADMIN';
+  $('verrou-detail').textContent = 'Scannez un bracelet STAFF pour déverrouiller';
   if (navigator.vibrate) navigator.vibrate(60);
   // On rouvre l'écran que l'agent voulait, pas systématiquement les réglages :
   // il a cliqué sur RECHERCHE, il doit atterrir sur la recherche.
@@ -634,7 +642,9 @@ function lireVerrouillage() {
 /* ─────────────────────────── Affichage ─────────────────────────── */
 
 function afficherDecision(decision) {
-  afficherPave(decision.libelle, decision.detail, decision.couleur);
+  const inconnu = decision.etat === 'NON_RECONNU';
+  afficherPave(decision.libelle, decision.detail, decision.couleur, false,
+               inconnu ? decision.uid : '');
 
   // L'alerte médicale est un bandeau SÉPARÉ : un badge peut être parfaitement
   // valide et porter un risque d'épilepsie, les deux doivent coexister.
@@ -665,9 +675,14 @@ function afficherDecision(decision) {
  *   peuvent être remplacés automatiquement ; une décision affichée à l'agent,
  *   jamais.
  */
-function afficherPave(libelle, detail, couleur, systeme) {
+function afficherPave(libelle, detail, couleur, systeme, uid) {
   $('pave-libelle').textContent = libelle;
   $('pave-detail').textContent = detail || '';
+  // L'UID n'est affiché que pour un bracelet inconnu : c'est le seul cas où il
+  // sert à quelque chose — le recopier dans le classeur pour déclarer une carte
+  // privilégiée ou rattraper une association ratée.
+  $('pave-uid').textContent = uid || '';
+  $('pave-uid').className = uid ? 'visible' : '';
   $('pave').className = couleur || '';
   etat.paveSysteme = systeme === true;
 }

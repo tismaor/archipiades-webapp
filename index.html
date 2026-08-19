@@ -65,6 +65,14 @@ main { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 #pave.orange { background: var(--orange); color: #000; border-color: var(--orange); }
 #pave-libelle { font-size: 26px; font-weight: 700; line-height: 1.15; letter-spacing: -0.5px; }
 #pave-detail { font-size: 14px; margin-top: 8px; opacity: 0.85; }
+/* UID d'un bracelet inconnu : c'est la seule façon de le déclarer dans le
+   classeur (compte privilégié, association manuelle). Il doit être lisible et
+   sélectionnable, donc affiché en clair et non dans un message fugace. */
+#pave-uid {
+  display: none; margin-top: 12px; font-size: 17px; letter-spacing: 1px;
+  font-weight: 700; user-select: all; -webkit-user-select: all;
+}
+#pave-uid.visible { display: block; }
 
 /* Alerte médicale : distincte du pavé, elle ne doit jamais être masquée. */
 #alerte {
@@ -158,12 +166,15 @@ nav button.actif { color: var(--texte); border-top: 2px solid var(--texte); }
 
 /* ── Verrou des réglages ───────────────────────────────────────────────── */
 #pave-verrou {
-  padding: 28px 16px; text-align: center; border: 2px solid var(--gris-sombre);
+  padding: 44px 16px; text-align: center; border: 2px solid var(--gris-sombre);
 }
 #pave-verrou.rouge { background: var(--rouge); color: #fff; border-color: var(--rouge); }
 #pave-verrou.rouge #verrou-detail { color: #fff; opacity: 0.85; }
+#verrou-cadenas { font-size: 40px; line-height: 1; margin-bottom: 16px; }
 #verrou-titre { font-size: 22px; font-weight: 700; }
-#verrou-detail { font-size: 14px; color: var(--gris); margin-top: 8px; }
+/* L'instruction est la seule chose à lire : elle ne doit pas être un sous-titre
+   gris qu'on survole, mais la phrase qui saute aux yeux. */
+#verrou-detail { font-size: 17px; margin-top: 14px; line-height: 1.4; }
 #verrou-manuel { display: none; margin-top: 20px; }
 #verrou-manuel.visible { display: block; }
 #saisie-manuelle { display: none; }
@@ -242,6 +253,7 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
     <div id="pave">
       <div id="pave-libelle">PRÊT</div>
       <div id="pave-detail">Approchez un bracelet</div>
+      <div id="pave-uid"></div>
     </div>
 
     <div id="alerte"></div>
@@ -304,8 +316,9 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
   <!-- ── Verrou des réglages ──────────────────────────────────────────── -->
   <section id="vue-verrou" class="vue">
     <div id="pave-verrou">
+      <div id="verrou-cadenas">🔒</div>
       <div id="verrou-titre">RÉGLAGES VERROUILLÉS</div>
-      <div id="verrou-detail">Scanner un bracelet STAFF ou ADMIN</div>
+      <div id="verrou-detail">Scannez un bracelet STAFF pour déverrouiller</div>
     </div>
     <button class="principal" id="btn-verrou-nfc">SCANNER UN BRACELET STAFF</button>
     <div id="verrou-manuel">
@@ -313,12 +326,6 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
       <input id="champ-uid-carte" type="text" autocomplete="off" autocapitalize="characters"
              spellcheck="false" placeholder="04A1B2C3D4E5F6">
       <button id="btn-verrou-uid">DÉVERROUILLER</button>
-    </div>
-    <div class="note">
-      Le déverrouillage dure quelques minutes, puis se referme seul. Un UID NTAG
-      n'étant pas un secret, ce verrou empêche une fausse manœuvre d'un bénévole,
-      pas une intrusion déterminée — les opérations réellement sensibles restent
-      vérifiées par le serveur.
     </div>
   </section>
 
