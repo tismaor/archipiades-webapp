@@ -219,6 +219,12 @@ button.attente { border-color: var(--orange); color: var(--orange); }
 nav button.verrouille { color: var(--gris-sombre); }
 nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 
+/* Retour à l'écran d'accueil. Discret — il ne doit pas concurrencer ACQUITTER
+   ni le bouton NFC — mais toujours présent dès qu'il y a quelque chose à
+   effacer, sans quoi on se croit bloqué sur la dernière personne scannée. */
+#btn-effacer { display: none; color: var(--gris); }
+#btn-effacer.visible { display: block; }
+
 /* ── Écran de démarrage ────────────────────────────────────────────────── */
 #demarrage {
   display: none; position: fixed; inset: 0; z-index: 100;
@@ -352,6 +358,8 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
       <button class="principal" id="btn-acquitter">ACQUITTER ET CONTINUER</button>
       <div class="compte" id="compte-a-rebours"></div>
     </div>
+
+    <button id="btn-effacer">✕ EFFACER L'ÉCRAN</button>
 
     <button class="principal" id="btn-nfc">DÉMARRER LA LECTURE NFC</button>
 

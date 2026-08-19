@@ -30,6 +30,7 @@ const etat = {
   deverrouillage: null,      // { nom, role, expire }
   vueDemandee: null,         // vue visée avant interception par le verrou
   demarrage: false,          // écran de première mise en service affiché
+  ecranOccupe: false,        // une décision ou une fiche est affichée
   filtres: { ecole: '', statut: '' }   // conservés d'une recherche à l'autre
 };
 
@@ -39,7 +40,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 9;
+const VERSION_APP = 10;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -743,6 +744,8 @@ function afficherDecision(decision) {
 
   afficherRepas(decision);
   gererBlocage(decision);
+  etat.ecranOccupe = true;
+  majBoutonEffacer();
 }
 
 /**
@@ -774,11 +777,37 @@ function afficherPave(libelle, detail, couleur, systeme, uid) {
  * en attente d'acquittement.
  */
 function afficherEcranPret() {
+  // Ne s'applique qu'à un pavé « système » : une fin de synchronisation ne doit
+  // jamais effacer la décision que l'agent est en train de lire.
   if (!etat.paveSysteme || etat.blocage) return;
+  reinitialiserEcran();
+}
+
+/**
+ * Retour à l'écran d'accueil, quel que soit ce qui était affiché.
+ *
+ * Sans cette sortie, la dernière personne scannée reste à l'écran jusqu'au scan
+ * suivant : on se croit bloqué sur sa fiche, et il n'y a aucun moyen de revenir
+ * à un écran neutre — c'est déroutant, et gênant quand on tend le téléphone à
+ * quelqu'un d'autre alors qu'il affiche encore un nom et une photo.
+ */
+function reinitialiserEcran() {
   afficherPave('PRÊT', 'Approchez un bracelet', null, true);
   $('identite').className = '';
   $('alerte').className = '';
   $('repas').className = '';
+  fermerAssociation();
+  etat.ficheCourante = null;
+  etat.ecranOccupe = false;
+  majBoutonEffacer();
+}
+
+/** Le bouton n'existe que s'il y a quelque chose à effacer. */
+function majBoutonEffacer() {
+  // Pendant un blocage passback, c'est ACQUITTER qui gouverne : offrir un
+  // second bouton permettrait d'escamoter le contrôle sans le journaliser.
+  const montrer = etat.ecranOccupe && !etat.blocage;
+  $('btn-effacer').className = montrer ? 'visible' : '';
 }
 
 function afficherPhoto(numero) {
@@ -906,11 +935,12 @@ function leverBlocage(motif) {
 
   etat.blocage = null;
   $('acquittement').className = '';
-  afficherPave('PRÊT', 'Approchez un bracelet', null, true);
+  reinitialiserEcran();
 }
 
 function brancherAcquittement() {
   $('btn-acquitter').addEventListener('click', function () { leverBlocage('ACQUITTE'); });
+  $('btn-effacer').addEventListener('click', reinitialiserEcran);
 }
 
 /* ─────────────────────────── Recherche ─────────────────────────── */
@@ -1034,6 +1064,8 @@ function afficherFiche(numero) {
   // pas une procédure séparée.
   if (etat.peutAssocier) ouvrirAssociation(p);
   else fermerAssociation();
+  etat.ecranOccupe = true;
+  majBoutonEffacer();
 }
 
 /* ─────────────────────── Attribution de bracelet ─────────────────────── */
