@@ -34,23 +34,72 @@ const API = (function () {
     return _url !== '' && _cle !== '' && _terminal !== '';
   }
 
-  /** GET : requête simple, aucun contrôle préalable. */
+  /**
+   * GET : requête simple, aucun contrôle préalable.
+   *
+   * Réessaie une fois en cas d'échec transitoire. Apps Script renvoie
+   * épisodiquement une page HTML d'erreur au lieu du JSON attendu, sans cause
+   * côté client — mesuré sur le déploiement réel, une requête sur cinq environ
+   * quand le service est sollicité. Sans ce filet, l'agent verrait « échec de
+   * synchronisation » et conclurait à une panne, alors qu'un simple nouvel
+   * essai suffit.
+   */
   function get(params, delaiMs) {
-    const parametres = new URLSearchParams(Object.assign({ key: _cle }, params));
-    return avecDelai(fetch(_url + '?' + parametres.toString(), {
-      method: 'GET',
-      redirect: 'follow'          // le 302 d'Apps Script DOIT être suivi
-    }), delaiMs).then(analyser);
+    const emettre = function () {
+      const parametres = new URLSearchParams(Object.assign({ key: _cle }, params));
+      return avecDelai(fetch(_url + '?' + parametres.toString(), {
+        method: 'GET',
+        redirect: 'follow'        // le 302 d'Apps Script DOIT être suivi
+      }), delaiMs).then(analyser);
+    };
+    return avecNouvelEssai(emettre, 2);
   }
 
-  /** POST en text/plain — voir l'avertissement en tête de fichier. */
+  /**
+   * Relance jusqu'à `essais` fois sur échec transitoire, avec attente croissante.
+   *
+   * Mesure sur le déploiement réel : environ **2 requêtes sur 10** échouent en
+   * renvoyant une page HTML d'erreur, sans cause côté client. Deux nouvelles
+   * tentatives ramènent la probabilité d'échec visible sous le pour cent.
+   */
+  function avecNouvelEssai(emettre, essais) {
+    return emettre().catch(function (erreur) {
+      if (essais <= 0 || !estTransitoire(erreur)) throw erreur;
+      const attente = (3 - essais) * 1800 + 1200;
+      console.warn('Nouvel essai dans ' + attente + ' ms — ' + erreur.message);
+      return new Promise(function (resoudre) { setTimeout(resoudre, attente); })
+        .then(function () { return avecNouvelEssai(emettre, essais - 1); });
+    });
+  }
+
+  /**
+   * Un échec transitoire mérite un nouvel essai ; une erreur métier, non.
+   * Réessayer une clé invalide ou un terminal inconnu ne ferait que doubler
+   * l'attente avant d'afficher le vrai message.
+   */
+  function estTransitoire(erreur) {
+    if (erreur.code) return false;          // erreur métier renvoyée par le backend
+    return /non JSON|Réponse vide|Délai dépassé|Failed to fetch|NetworkError/i
+      .test(erreur.message || '');
+  }
+
+  /**
+   * POST en text/plain — voir l'avertissement en tête de fichier.
+   *
+   * Relancé lui aussi : l'idempotence par `scan_id` côté serveur rend un
+   * doublon d'envoi totalement inoffensif, il n'y a donc aucune raison de
+   * s'interdire un nouvel essai.
+   */
   function post(charge, delaiMs) {
-    return avecDelai(fetch(_url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ key: _cle }, charge)),
-      redirect: 'follow'
-    }), delaiMs).then(analyser);
+    const emettre = function () {
+      return avecDelai(fetch(_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ key: _cle }, charge)),
+        redirect: 'follow'
+      }), delaiMs).then(analyser);
+    };
+    return avecNouvelEssai(emettre, 2);
   }
 
   function analyser(reponse) {
