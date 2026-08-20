@@ -41,7 +41,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 12;
+const VERSION_APP = 13;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -399,6 +399,11 @@ function synchroniser(manuelle) {
           + 'vérifiez l\'identifiant du terminal et le classeur.');
       }
       if (manuelle) message(recues + ' fiche(s) mise(s) à jour.');
+      // Sans cet appel, la rétention de l'historique n'est qu'une intention :
+      // le magasin grossit indéfiniment, et chaque lecture avec lui.
+      DB.purgerHistorique().catch(function (erreur) {
+        console.warn('purge de l\'historique : ' + erreur.message);
+      });
       return verifierPeremption();
     })
     .catch(function (erreur) {
@@ -472,7 +477,7 @@ function effacerTerminal() {
 
 function rechargerBaseMemoire() {
   return Promise.all([DB.chargerBase(), DB.lireMeta('refs'), DB.lireMeta('point_controle'),
-                      DB.scansRecents(3600000), DB.lireMeta('cartes'),
+                      DB.scansRecents(3600000, 500), DB.lireMeta('cartes'),
                       DB.lireMeta('peut_associer')])
     .then(function (valeurs) {
       etat.base = valeurs[0];
@@ -1022,6 +1027,9 @@ function brancherAcquittement() {
  */
 const MAX_HISTORIQUE = 100;
 
+/** Profondeur consultable depuis l'onglet HISTORIQUE. */
+const HISTORIQUE_AFFICHE_MS = 18 * 3600 * 1000;
+
 /** Couleur de l'état, reprise du moteur pour rester cohérente avec le pavé. */
 function couleurEtat(nomEtat) {
   const couleurs = (typeof COULEURS !== 'undefined') ? COULEURS : {};
@@ -1039,7 +1047,10 @@ function brancherHistorique() {
 function afficherHistorique() {
   const terme = DB.normaliserTexte($('filtre-historique').value);
 
-  return DB.scansRecents(24 * 3600 * 1000).then(function (scans) {
+  // On ne demande jamais plus que ce que l'on peut afficher : c'est ce qui
+  // rend le coût indépendant du nombre de passages de la journée. Le facteur 3
+  // laisse de la marge au filtre textuel sans charger tout l'historique.
+  return DB.scansRecents(HISTORIQUE_AFFICHE_MS, MAX_HISTORIQUE * 3).then(function (scans) {
     const retenus = [];
     for (let i = 0; i < scans.length && retenus.length < MAX_HISTORIQUE; i++) {
       const scan = scans[i];
@@ -1052,9 +1063,12 @@ function afficherHistorique() {
       retenus.push({ scan: scan, participant: p });
     }
 
+    // On n'annonce PAS de total : le curseur s'arrête à un plafond, il ne compte
+    // pas la journée entière. Dire « sur 300 » laisserait croire qu'il n'y a eu
+    // que 300 passages, ce qui est faux dès qu'un poste est chargé.
     $('compte-historique').textContent = retenus.length
-      ? retenus.length + (retenus.length > 1 ? ' passages' : ' passage')
-        + (scans.length > retenus.length ? ' sur ' + scans.length : '')
+      ? retenus.length + (retenus.length > 1 ? ' passages affichés' : ' passage affiché')
+        + (retenus.length >= MAX_HISTORIQUE ? ' — les plus récents' : '')
       : '';
 
     if (!retenus.length) {
@@ -1690,7 +1704,16 @@ function rafraichirStatistiques() {
     $('stat-bracelets').textContent = s.bracelets;
     $('stat-photos').textContent = s.photos;
     $('stat-attente').textContent = s.en_attente;
+    $('stat-historique').textContent = s.historique + ' passage(s)';
   });
+  // Jauge mémoire : le seul moyen de savoir, depuis le terrain, si un appareil
+  // qui se ferme tout seul manque réellement de mémoire. Android tue l'onglet
+  // sans laisser la moindre erreur JavaScript derrière lui.
+  const m = performance.memory;
+  $('stat-memoire').textContent = m
+    ? Math.round(m.usedJSHeapSize / 1048576) + ' Mo sur ' +
+      Math.round(m.jsHeapSizeLimit / 1048576) + ' Mo'
+    : 'non mesurable';
   DB.lireMeta('derniere_sync').then(function (horodatage) {
     $('stat-sync').textContent = horodatage
       ? new Date(horodatage).toLocaleTimeString('fr-FR')

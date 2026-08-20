@@ -179,10 +179,18 @@ const API = (function () {
    */
   function photo(numero) {
     return get({ action: 'photo', id: numero }, 20000).then(function (reponse) {
-      const binaire = atob(reponse.data_base64);
-      const octets = new Uint8Array(binaire.length);
-      for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
-      return new Blob([octets], { type: reponse.mime || 'image/jpeg' });
+      if (!reponse || !reponse.data_base64) {
+        throw new Error('Réponse photo sans données');
+      }
+      // Décodage confié au navigateur via une URL `data:`.
+      //
+      // La méthode manuelle — atob() puis une boucle caractère par caractère —
+      // construisait deux copies intermédiaires en mémoire JS (la chaîne
+      // binaire, puis le tableau d'octets) et occupait le fil principal pendant
+      // tout le parcours. Ici, le décodage se fait hors du tas JS et sans
+      // bloquer l'affichage.
+      return fetch('data:' + (reponse.mime || 'image/jpeg') + ';base64,' +
+                   reponse.data_base64).then(function (r) { return r.blob(); });
     });
   }
 

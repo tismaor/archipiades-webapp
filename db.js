@@ -326,14 +326,38 @@ function compterFileScans() {
  *
  * Renvoyés du plus récent au plus ancien, comme l'attend le moteur de règles.
  */
-function scansRecents(fenetreMs) {
-  const limite = Date.now() - (fenetreMs || 3600000);
+/**
+ * Scans récents, du plus récent au plus ancien.
+ *
+ * ⚠️ Parcours par CURSEUR sur l'index `par_date`, jamais `getAll()`.
+ *
+ * `getAll()` charge tout l'historique en mémoire avant de filtrer : le coût
+ * grandit avec le nombre de passages, indéfiniment, alors que l'appelant n'a
+ * jamais besoin que de la dernière heure ou des cent derniers. Sur un téléphone
+ * de bénévole après une journée de scans, c'est un pic d'allocation à chaque
+ * ouverture de l'historique et à chaque synchronisation — et un onglet qui se
+ * fait tuer par le système.
+ *
+ * Ici, on descend le curseur du plus récent vers le plus ancien et on s'arrête
+ * dès qu'on a ce qu'il faut. Le coût ne dépend plus de la taille du magasin.
+ */
+function scansRecents(fenetreMs, maximum) {
+  const plancher = Date.now() - (fenetreMs || 3600000);
+  const plafond = maximum || 500;
   return ouvrirDb().then(function (db) {
-    return promesse(db.transaction(['historique'], 'readonly')
-                      .objectStore('historique').getAll());
-  }).then(function (tout) {
-    return tout.filter(function (s) { return s.ts_terminal >= limite; })
-               .sort(function (a, b) { return b.ts_terminal - a.ts_terminal; });
+    return new Promise(function (resoudre, rejeter) {
+      const resultats = [];
+      const requete = db.transaction(['historique'], 'readonly')
+        .objectStore('historique').index('par_date')
+        .openCursor(IDBKeyRange.lowerBound(plancher), 'prev');
+      requete.onerror = function () { rejeter(requete.error); };
+      requete.onsuccess = function (evenement) {
+        const curseur = evenement.target.result;
+        if (!curseur || resultats.length >= plafond) { resoudre(resultats); return; }
+        resultats.push(curseur.value);
+        curseur.continue();
+      };
+    });
   });
 }
 
@@ -345,19 +369,35 @@ function viderHistorique() {
 }
 
 /** Élague l'historique : il ne sert qu'aux dernières heures. */
+/**
+ * Supprime les scans plus vieux que la rétention.
+ *
+ * Appelée après chaque synchronisation réussie. Sans elle, le magasin grossit
+ * indéfiniment : la rétention annoncée ne serait qu'une intention.
+ *
+ * Le curseur ne touche QUE les périmés — il s'arrête à la borne haute de la
+ * plage — donc le coût est proportionnel à ce qu'on supprime, pas au volume
+ * conservé.
+ */
 function purgerHistorique() {
   const limite = Date.now() - HISTORIQUE_DUREE_MS;
   return ouvrirDb().then(function (db) {
-    return promesse(db.transaction(['historique'], 'readonly')
-                      .objectStore('historique').getAll());
-  }).then(function (tout) {
-    const perimes = tout.filter(function (s) { return s.ts_terminal < limite; })
-                        .map(function (s) { return s.scan_id; });
-    if (!perimes.length) return 0;
-    return transaction(['historique'], 'readwrite', function (tx) {
-      const magasin = tx.objectStore('historique');
-      perimes.forEach(function (id) { magasin.delete(id); });
-    }).then(function () { return perimes.length; });
+    return new Promise(function (resoudre, rejeter) {
+      let supprimes = 0;
+      const tx = db.transaction(['historique'], 'readwrite');
+      const requete = tx.objectStore('historique').index('par_date')
+        .openCursor(IDBKeyRange.upperBound(limite, true));
+      requete.onerror = function () { rejeter(requete.error); };
+      requete.onsuccess = function (evenement) {
+        const curseur = evenement.target.result;
+        if (!curseur) return;
+        curseur.delete();
+        supprimes++;
+        curseur.continue();
+      };
+      tx.oncomplete = function () { resoudre(supprimes); };
+      tx.onerror = function () { rejeter(tx.error); };
+    });
   });
 }
 
@@ -384,15 +424,18 @@ function purgerBase() {
 
 function statistiques() {
   return ouvrirDb().then(function (db) {
-    const tx = db.transaction(['participants', 'bracelets', 'photos', 'file_scans'], 'readonly');
+    const tx = db.transaction(['participants', 'bracelets', 'photos', 'file_scans',
+                               'historique'], 'readonly');
     return Promise.all([
       promesse(tx.objectStore('participants').count()),
       promesse(tx.objectStore('bracelets').count()),
       promesse(tx.objectStore('photos').count()),
-      promesse(tx.objectStore('file_scans').count())
+      promesse(tx.objectStore('file_scans').count()),
+      promesse(tx.objectStore('historique').count())
     ]);
   }).then(function (n) {
-    return { participants: n[0], bracelets: n[1], photos: n[2], en_attente: n[3] };
+    return { participants: n[0], bracelets: n[1], photos: n[2], en_attente: n[3],
+             historique: n[4] };
   });
 }
 
