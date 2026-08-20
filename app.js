@@ -42,7 +42,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 16;
+const VERSION_APP = 17;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -1010,6 +1010,12 @@ function afficherPhoto(numero) {
 
     if (!navigator.onLine || !API.estConfigure()) return;
 
+    // Le serveur indique si une source de photo existe pour cette personne.
+    // Sans ce garde-fou, chaque fiche sans photo fait patienter l'agent 3 à 4
+    // secondes devant « CHARGEMENT… » pour finir sur PHOTO_INTROUVABLE.
+    const fiche = etat.base.participants.get(numero);
+    if (fiche && fiche.photo === false) return;
+
     // Distinguer « absente » de « en train d'arriver » : sans cela, l'agent
     // reste plusieurs secondes devant un cadre qui semble définitif, alors que
     // la photo est en route.
@@ -1675,10 +1681,45 @@ function brancherSignalement() {
  * Séquentiel et non parallèle : cent requêtes simultanées vers Apps Script
  * seraient étranglées côté serveur et bien plus lentes.
  */
+/**
+ * Nombre de téléchargements de photos menés de front.
+ *
+ * Mesuré contre le déploiement réel, en secondes par photo :
+ *
+ *   3 fils → 1,8   ·   6 fils → 1,8   ·   12 fils → 0,52   ·   20 fils → 0,44
+ *
+ * Apps Script parallélise donc bien mieux que ce que l'on croyait : la valeur
+ * de 3 retenue au départ était largement sous-dimensionnée et transformait un
+ * préchargement de vingt minutes en plusieurs heures.
+ *
+ * ⚠️ Ne pas monter beaucoup plus haut. Le gain plafonne au-delà de 12, et
+ * plusieurs téléphones préchargeant ensemble additionnent leurs fils : dix
+ * appareils à 10 fils font déjà cent requêtes simultanées, soit le plafond
+ * d'exécutions concurrentes d'Apps Script. Préchargez les appareils par petits
+ * groupes plutôt que d'augmenter cette valeur.
+ */
+const FILS_PHOTOS = 10;
+
 function prechargerPhotos() {
   if (!API.estConfigure()) { message('Configurez d\'abord la connexion.', 'erreur'); return; }
-  const numeros = Array.from(etat.base.participants.keys());
-  if (!numeros.length) { message('Base vide : synchronisez d\'abord.', 'erreur'); return; }
+  // On ne précharge QUE les participants dont le serveur annonce une photo.
+  // Demander les autres coûte 3 à 4 secondes chacun pour un échec certain :
+  // sur 2 000 fiches dont vingt seulement ont une photo, c'est la différence
+  // entre quelques secondes et plusieurs heures.
+  const tous = Array.from(etat.base.participants.values());
+  const numeros = tous.filter(function (p) { return p.photo !== false; })
+                      .map(function (p) { return p.numero; });
+
+  if (!tous.length) { message('Base vide : synchronisez d\'abord.', 'erreur'); return; }
+  if (!numeros.length) {
+    message('Aucun participant n\'a de photo dans le classeur — rien à précharger.',
+            'erreur');
+    return;
+  }
+  if (numeros.length < tous.length) {
+    message(numeros.length + ' photo(s) à charger sur ' + tous.length +
+            ' participants ; les autres n\'en ont pas dans le classeur.');
+  }
 
   const bouton = $('btn-photos');
   bouton.disabled = true;
@@ -1696,9 +1737,10 @@ function prechargerPhotos() {
       const dureeUnitaire = (Date.now() - debut) / 1000;
       const tailleKo = blob.size / 1024;
       const totalMo = Math.round(numeros.length * tailleKo / 1024);
-      // Trois téléchargements simultanés : au-delà, Apps Script étrangle et
-      // l'on perd le bénéfice.
-      const minutes = Math.round(numeros.length * dureeUnitaire / 3 / 60);
+      // La mesure porte sur UNE photo, donc sur un seul fil : on divise par le
+      // nombre de fils réellement employés.
+      const minutes = Math.max(1,
+        Math.round(numeros.length * dureeUnitaire / FILS_PHOTOS / 60));
 
       let texte = numeros.length + ' photos, environ ' + totalMo + ' Mo.\n' +
                   'Durée estimée : ' + (minutes > 60
@@ -1751,7 +1793,7 @@ function telechargerPhotos(numeros, bouton, dureeUnitaire) {
       })
       .then(function () {
         faits++;
-        if (faits % 5 === 0 || faits === numeros.length) {
+        if (faits % FILS_PHOTOS === 0 || faits === numeros.length) {
           const restant = Math.round((Date.now() - depart) / faits *
                                      (numeros.length - faits) / 60000);
           bouton.textContent = faits + '/' + numeros.length +
@@ -1762,7 +1804,7 @@ function telechargerPhotos(numeros, bouton, dureeUnitaire) {
   };
 
   const fils = [];
-  for (let i = 0; i < 3; i++) fils.push(suivante());
+  for (let i = 0; i < FILS_PHOTOS; i++) fils.push(suivante());
 
   return Promise.all(fils).then(function () {
     bouton.disabled = false;
