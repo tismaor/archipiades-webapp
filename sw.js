@@ -6,8 +6,20 @@
  * cache HTTP serait une faute — l'application servirait des droits d'accès
  * périmés sans que personne ne s'en aperçoive.
  *
- * Stratégie : réseau d'abord pour la coque (afin qu'une mise à jour soit prise
- * en compte), repli sur le cache si le réseau manque.
+ * Stratégie : **cache d'abord pour la coque**, et le cache est traité comme une
+ * génération indivisible.
+ *
+ * ⚠️ Pourquoi PAS « réseau d'abord ». Chaque fichier se résolvait alors
+ * indépendamment vers le réseau OU le cache. Sur une 4G capricieuse, on
+ * obtenait un `index.html` du cache et un `app.js` du réseau — deux versions
+ * mélangées dans la même page. Le symptôme observé : « Cannot set properties of
+ * null », parce que le JavaScript neuf cherchait un élément que le HTML périmé
+ * ne contenait pas encore.
+ *
+ * Ici, `install` télécharge toute la coque en bloc sous un nom de cache
+ * versionné : tout vient de la même génération, ou rien. La mise à jour reste
+ * immédiate — le navigateur revérifie `sw.js` à chaque navigation, et le nom du
+ * cache est incrémenté à chaque déploiement.
  */
 
 'use strict';
@@ -19,7 +31,7 @@
  * d'appliquer d'anciennes règles d'accès — sans que personne ne s'en aperçoive.
  * C'est le même piège que le déploiement figé d'Apps Script, une couche plus bas.
  */
-const CACHE = 'archipiades-coque-v13';
+const CACHE = 'archipiades-coque-v14';
 
 const COQUE = [
   './',
@@ -49,6 +61,15 @@ self.addEventListener('activate', function (evenement) {
                                .map(function (nom) { return caches.delete(nom); }));
       })
       .then(function () { return self.clients.claim(); })
+      // Prévenir les onglets ouverts : ils exécutent encore l'ancien code, et
+      // seul un rechargement les alignera. Sans ce signal, un bénévole peut
+      // travailler une journée entière sur une version périmée.
+      .then(function () { return self.clients.matchAll({ type: 'window' }); })
+      .then(function (clients) {
+        clients.forEach(function (client) {
+          client.postMessage({ type: 'NOUVELLE_VERSION', cache: CACHE });
+        });
+      })
   );
 });
 
@@ -64,22 +85,25 @@ self.addEventListener('fetch', function (evenement) {
   if (requete.method !== 'GET') return;
 
   evenement.respondWith(
-    // `no-store` court-circuite le cache HTTP du navigateur, qui sert sinon une
-    // version périmée sans même contacter le serveur. Le surcoût est
-    // négligeable — quelques kilo-octets — et le risque évité considérable :
-    // une application qui applique des règles d'accès obsolètes.
-    fetch(requete, { cache: 'no-store' })
-      .then(function (reponse) {
-        if (reponse && reponse.status === 200 && reponse.type === 'basic') {
-          const copie = reponse.clone();
-          caches.open(CACHE).then(function (cache) { cache.put(requete, copie); });
-        }
-        return reponse;
-      })
-      .catch(function () {
-        return caches.match(requete).then(function (miseEnCache) {
-          return miseEnCache || caches.match('index.html');
-        });
-      })
+    // Le cache de CETTE génération d'abord : c'est ce qui garantit que tous les
+    // fichiers de la coque proviennent du même déploiement.
+    caches.open(CACHE).then(function (cache) {
+      return cache.match(requete).then(function (miseEnCache) {
+        if (miseEnCache) return miseEnCache;
+
+        // Fichier hors coque : réseau, avec `no-store` pour court-circuiter le
+        // cache HTTP du navigateur, puis repli sur l'écran d'accueil hors ligne.
+        return fetch(requete, { cache: 'no-store' })
+          .then(function (reponse) {
+            if (reponse && reponse.status === 200 && reponse.type === 'basic') {
+              cache.put(requete, reponse.clone());
+            }
+            return reponse;
+          })
+          .catch(function () {
+            return cache.match('index.html');
+          });
+      });
+    })
   );
 });

@@ -41,7 +41,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 13;
+const VERSION_APP = 14;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -136,6 +136,8 @@ document.addEventListener('DOMContentLoaded', function () {
   brancher('historique', brancherHistorique);
   brancher('signalement', brancherSignalement);
 
+  brancher('intégrité', verifierIntegriteInterface);
+
   chargerReglages();
   etat.deverrouillage = lireDeverrouillagePersiste();
 
@@ -174,6 +176,15 @@ document.addEventListener('DOMContentLoaded', function () {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function (erreur) {
       console.warn('Service Worker non enregistré : ' + erreur);
+    });
+    // Une nouvelle coque a été installée : l'onglet ouvert exécute encore
+    // l'ancien code et seul un rechargement l'alignera. On ne recharge PAS
+    // d'autorité — cela effacerait un écran de décision sous les yeux de
+    // l'agent — on propose.
+    navigator.serviceWorker.addEventListener('message', function (evenement) {
+      if (evenement.data && evenement.data.type === 'NOUVELLE_VERSION') {
+        signalerMiseAJour();
+      }
     });
   }
 });
@@ -242,6 +253,42 @@ function brancherDemarrage() {
                             expire: Date.now() + 5 * 60 * 1000 };
     montrerVue('vue-reglages');
   });
+}
+
+/**
+ * Vérifie que le HTML servi correspond bien au code qui s'exécute.
+ *
+ * Le cas s'est produit en exploitation : `index.html` périmé servi à côté d'un
+ * `app.js` neuf, et la première fonction qui cherchait un élément récent
+ * échouait sur un « Cannot set properties of null » incompréhensible. Mieux
+ * vaut nommer la cause tout de suite.
+ */
+const ELEMENTS_REQUIS = [
+  'pave', 'pave-libelle', 'pave-detail', 'pave-uid', 'identite', 'nom',
+  'liste-historique', 'filtre-historique', 'compte-historique',
+  'signalement', 'btn-signaler', 'champ-signalement',
+  'btn-attribuer', 'btn-suspendre', 'btn-effacer',
+  'filtre-ecole', 'filtre-statut', 'compte-resultats',
+  'demarrage', 'demarrage-etat', 'stat-historique', 'stat-memoire'
+];
+
+function verifierIntegriteInterface() {
+  const absents = ELEMENTS_REQUIS.filter(function (id) { return !$(id); });
+  if (!absents.length) return true;
+  signalerPanne('VERSION INCOHÉRENTE — le HTML affiché est plus ancien que le ' +
+    'programme (' + absents.length + ' élément(s) manquant(s) : ' +
+    absents.slice(0, 3).join(', ') + '). Fermez complètement l\'application et ' +
+    'rouvrez-la ; si cela persiste, videz les données du site.');
+  return false;
+}
+
+/** Bandeau non bloquant : une nouvelle version attend un rechargement. */
+function signalerMiseAJour() {
+  const zone = $('panne');
+  if (!zone) return;
+  zone.textContent = '↻ Nouvelle version installée — fermez et rouvrez ' +
+    'l\'application pour l\'activer.';
+  zone.className = 'visible';
 }
 
 /* ─────────────────────────── Réglages ─────────────────────────── */
@@ -1698,31 +1745,48 @@ function rafraichirBandeau() {
   });
 }
 
+/**
+ * Écrit dans un élément s'il existe, sans jamais lever d'exception.
+ *
+ * Un affichage de confort ne doit pas pouvoir faire tomber l'application. Le
+ * cas s'est produit : un `index.html` périmé servi à côté d'un `app.js` neuf,
+ * et le message « Cannot set properties of null » remontait dans le bandeau de
+ * panne — illisible, et sans rapport apparent avec la vraie cause.
+ */
+function definirTexte(identifiant, valeur) {
+  const element = $(identifiant);
+  if (!element) { console.warn('élément absent : ' + identifiant); return false; }
+  element.textContent = valeur;
+  return true;
+}
+
 function rafraichirStatistiques() {
   DB.statistiques().then(function (s) {
-    $('stat-participants').textContent = s.participants;
-    $('stat-bracelets').textContent = s.bracelets;
-    $('stat-photos').textContent = s.photos;
-    $('stat-attente').textContent = s.en_attente;
-    $('stat-historique').textContent = s.historique + ' passage(s)';
+    definirTexte('stat-participants', s.participants);
+    definirTexte('stat-bracelets', s.bracelets);
+    definirTexte('stat-photos', s.photos);
+    definirTexte('stat-attente', s.en_attente);
+    definirTexte('stat-historique', s.historique + ' passage(s)');
+  }).catch(function (erreur) {
+    console.warn('statistiques : ' + erreur.message);
   });
   // Jauge mémoire : le seul moyen de savoir, depuis le terrain, si un appareil
   // qui se ferme tout seul manque réellement de mémoire. Android tue l'onglet
   // sans laisser la moindre erreur JavaScript derrière lui.
   const m = performance.memory;
-  $('stat-memoire').textContent = m
+  definirTexte('stat-memoire', m
     ? Math.round(m.usedJSHeapSize / 1048576) + ' Mo sur ' +
       Math.round(m.jsHeapSizeLimit / 1048576) + ' Mo'
-    : 'non mesurable';
+    : 'non mesurable');
   DB.lireMeta('derniere_sync').then(function (horodatage) {
-    $('stat-sync').textContent = horodatage
+    definirTexte('stat-sync', horodatage
       ? new Date(horodatage).toLocaleTimeString('fr-FR')
-      : 'jamais';
-  });
+      : 'jamais');
+  }).catch(function () {});
   DB.lireMeta('point_controle').then(function (point) {
-    $('stat-point').textContent = point || '—';
-  });
-  $('stat-version').textContent = 'v' + VERSION_APP;
+    definirTexte('stat-point', point || '—');
+  }).catch(function () {});
+  definirTexte('stat-version', 'v' + VERSION_APP);
 }
 
 /** Retour haptique : distinct selon la gravité, perceptible sans regarder. */
