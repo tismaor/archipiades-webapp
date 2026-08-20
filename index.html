@@ -230,14 +230,17 @@ button.action.discret { border-color: var(--gris); color: var(--gris); }
 }
 #confirmation.danger #confirmation-titre { color: var(--rouge); }
 #confirmation-texte { font-size: 15px; line-height: 1.45; }
+#confirmation-texte:empty { display: none; }
 #confirmation-champ {
   display: none; width: 100%; margin-top: 14px; padding: 12px;
   background: var(--fond); color: var(--texte); border: 1px solid var(--gris);
   font-family: inherit; font-size: 16px; resize: vertical;
 }
 #confirmation-champ.visible { display: block; }
-#confirmation-note { display: none; }
-#confirmation-note:not(:empty) { display: block; }
+/* Mention légale sous la zone de saisie : petite et grise, elle informe sans
+   concurrencer ce qu'il y a à écrire. */
+#confirmation-note { display: none; font-size: 12px; color: var(--gris); }
+#confirmation-note:not(:empty) { display: block; margin-top: 10px; line-height: 1.5; }
 #confirmation-etat { display: none; font-size: 14px; margin-top: 12px; }
 #confirmation-etat:not(:empty) { display: block; }
 #confirmation-etat.erreur { color: var(--orange); }
@@ -254,11 +257,15 @@ button.action.discret { border-color: var(--gris); color: var(--gris); }
 }
 .filtres select.actif { border-color: var(--texte); border-width: 2px; }
 #compte-resultats { font-size: 12px; color: var(--gris); margin-top: 12px; }
+/* Le jeton en cours occupe la place du pavé de décision : c'est l'élément
+   central de cet écran — qui a ouvert la session, et pour combien de temps. */
 #banniere-deverrouille {
-  display: none; padding: 10px; margin-bottom: 12px;
-  border: 1px solid var(--gris); font-size: 12px; color: var(--gris);
+  display: none; padding: 20px 16px; margin-bottom: 18px; text-align: center;
+  border: 2px solid var(--gris-sombre); font-size: 15px; line-height: 1.4;
 }
 #banniere-deverrouille.visible { display: block; }
+#banniere-deverrouille .porteur { font-size: 18px; font-weight: 700; display: block; }
+#banniere-deverrouille .restant { color: var(--gris); font-size: 13px; }
 
 /* Bandeau de panne : une erreur ne doit jamais être muette. */
 #panne {
@@ -292,29 +299,20 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
    le texte, pas une couleur de plus. */
 #etat-reseau.nfc-actif { color: var(--texte); }
 
-/* En consultation, le pavé passe SOUS la fiche : on cherchait la personne, on
-   la regarde d'abord. Sur un scan au contraire, la couleur décide et doit
-   rester en tête — l'ordre du document est alors respecté tel quel.
+/* Le pavé reste EN TÊTE sur toutes les fiches, consultation comprise : la
+   couleur décide, elle se lit avant le reste, et l'écran garde la même
+   structure qu'on y arrive par un scan ou par une recherche.
 
-   ⚠️ `display: flex` est porté par `.visible` et NON par `#vue-scan` seul :
-   un sélecteur d'identifiant l'emporterait sur `.vue { display: none }` et la
-   vue resterait affichée en permanence, par-dessus les autres. */
+   ⚠️ `display: flex` est porté par `.visible` et NON par `#vue-scan` seul : un
+   sélecteur d'identifiant l'emporterait sur `.vue { display: none }` et la vue
+   resterait affichée en permanence, par-dessus les autres.
+
+   Écarts : 18 px entre les blocs, 10 px entre les boutons d'un même groupe.
+   Réglé par marges plutôt que par `gap` — un `gap` uniforme séparerait les
+   boutons autant que les blocs, et le groupe d'actions ne se lirait plus comme
+   un groupe. */
 #vue-scan.visible { display: flex; flex-direction: column; }
-#vue-scan.consultation > * { order: 3; }
-#vue-scan.consultation > #alerte { order: 0; }
-#vue-scan.consultation > #identite { order: 1; }
-#vue-scan.consultation > #pave { order: 2; }
-
-/* Espacement régulier entre les trois blocs de la fiche — identité, pavé de
-   consultation, actions. Les marges individuelles des blocs sont neutralisées
-   au profit d'un `gap` unique : trois écarts identiques valent mieux que trois
-   marges accordées à la main, qui redivergent à la première modification. */
-/* Deux écarts de bloc identiques — identité → consultation → actions — et un
-   écart plus serré entre les trois boutons, qui forment un groupe. On règle par
-   marges plutôt que par `gap` : un `gap` uniforme séparerait les boutons autant
-   que les blocs, et le groupe d'actions ne se lirait plus comme un groupe. */
-#vue-scan.consultation > #identite { margin-top: 0; }
-#vue-scan.consultation > #pave { margin-top: 18px; }
+#vue-scan.consultation > #identite { margin-top: 18px; }
 #vue-scan.consultation > #actions { margin-top: 18px; }
 #vue-scan.consultation > #actions > button:first-child { margin-top: 0; }
 #vue-scan.consultation > #repas { margin-top: 18px; }
@@ -398,7 +396,7 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bottom: 8px; font-weight: 400; }
 </style>
 </head>
-<body data-coque="22">
+<body data-coque="23">
 
 <div id="panne"></div>
 
@@ -545,39 +543,42 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
 
   <!-- ── Vue réglages ─────────────────────────────────────────────────── -->
   <section id="vue-reglages" class="vue">
+    <!-- Le jeton en cours prend la place du pavé : c'est le « qui suis-je » de
+         cet écran, et il se lit avant tout le reste. -->
     <div id="banniere-deverrouille"></div>
-    <h2>Connexion au backend</h2>
+
+    <h2>État local</h2>
+    <div class="stat"><span>Participants</span><span id="stat-participants">—</span></div>
+    <div class="stat"><span>Bracelets</span><span id="stat-bracelets">—</span></div>
+    <div class="stat"><span>Photos en cache</span><span id="stat-photos">—</span></div>
+    <div class="stat"><span>Scans en attente</span><span id="stat-attente">—</span></div>
+    <div class="stat"><span>Historique conservé</span><span id="stat-historique">—</span></div>
+    <div class="stat"><span>Dernière synchronisation</span><span id="stat-sync">—</span></div>
+    <div class="stat"><span>Point de contrôle</span><span id="stat-point">—</span></div>
+    <div class="stat"><span>Version de l'application</span><span id="stat-version">—</span></div>
+    <div class="stat"><span>Données stockées</span><span id="stat-stockage">—</span></div>
+    <div class="stat"><span>Poids moyen d'une photo</span><span id="stat-poids-photo">—</span></div>
+    <div class="stat"><span>Mémoire vive utilisée</span><span id="stat-memoire">—</span></div>
+    <h2 style="margin-top:28px">Connexion au backend</h2>
     <label for="champ-url">URL de déploiement (…/exec)</label>
     <input id="champ-url" type="url" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
     <label for="champ-cle">Clé API</label>
     <input id="champ-cle" type="text" autocomplete="off">
     <label for="champ-terminal">Identifiant du terminal</label>
     <input id="champ-terminal" type="text" autocomplete="off" placeholder="WEB-01">
-    <button class="principal" id="btn-enregistrer">ENREGISTRER ET SYNCHRONISER</button>
+    <button class="action" id="btn-enregistrer">ENREGISTRER ET SYNCHRONISER</button>
 
-    <h2 style="margin-top:28px">État local</h2>
-    <div class="stat"><span>Participants</span><span id="stat-participants">—</span></div>
-    <div class="stat"><span>Bracelets</span><span id="stat-bracelets">—</span></div>
-    <div class="stat"><span>Photos en cache</span><span id="stat-photos">—</span></div>
-    <div class="stat"><span>Scans en attente</span><span id="stat-attente">—</span></div>
-    <div class="stat"><span>Historique conservé</span><span id="stat-historique">—</span></div>
-    <div class="stat"><span>Mémoire utilisée</span><span id="stat-memoire">—</span></div>
-    <div class="stat"><span>Espace occupé sur l'appareil</span><span id="stat-stockage">—</span></div>
-    <div class="stat"><span>Poids moyen d'une photo</span><span id="stat-poids-photo">—</span></div>
-    <div class="stat"><span>Dernière synchronisation</span><span id="stat-sync">—</span></div>
-    <div class="stat"><span>Point de contrôle</span><span id="stat-point">—</span></div>
-    <div class="stat"><span>Version de l'application</span><span id="stat-version">—</span></div>
+    <button class="action" id="btn-sync">SYNCHRONISER MAINTENANT</button>
 
-    <button id="btn-sync">SYNCHRONISER MAINTENANT</button>
-    <button id="btn-photos">PRÉCHARGER LES PHOTOS</button>
+    <button class="action" id="btn-photos">PRÉCHARGER LES PHOTOS</button>
     <div class="note">
       Le préchargement télécharge toutes les miniatures (~12 ko chacune) pour un
-      fonctionnement totalement hors ligne. <b>À faire en Wi-Fi</b>, au briefing
-      des bénévoles : environ 60 Mo pour 5 000 participants.
+      fonctionnement totalement hors ligne.
     </div>
 
-    <button id="btn-vider-photos">VIDER LE CACHE DES PHOTOS</button>
-    <button class="discret" id="btn-purger">EFFACER LA BASE LOCALE</button>
+    <button class="action" id="btn-vider-photos">VIDER LE CACHE DES PHOTOS</button>
+
+    <button class="action danger" id="btn-purger">EFFACER LA BASE LOCALE</button>
     <div class="note">
       Les scans en attente d'envoi sont conservés : une purge ne doit jamais
       faire disparaître un passage non remonté.

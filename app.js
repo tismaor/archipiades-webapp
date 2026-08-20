@@ -47,7 +47,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 22;
+const VERSION_APP = 23;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -786,10 +786,27 @@ function brancherVerrou() {
 
 function rafraichirBanniereDeverrouillage() {
   const banniere = $('banniere-deverrouille');
-  if (!etat.deverrouillage) { banniere.className = ''; return; }
+  if (!etat.deverrouillage) {
+    // Verrou inactif faute de carte déclarée : le dire vaut mieux que
+    // n'afficher rien, sinon on croit à un oubli d'affichage.
+    if (!verrouArme()) {
+      banniere.innerHTML = '<span class="porteur">AUCUN VERROU</span>' +
+        '<span class="restant">Aucune carte déclarée dans le classeur</span>';
+      banniere.className = 'visible';
+      return;
+    }
+    banniere.innerHTML = '<span class="porteur">SESSION FERMÉE</span>' +
+      '<span class="restant">Présentez une carte STAFF pour ouvrir</span>';
+    banniere.className = 'visible';
+    return;
+  }
   const restant = Math.max(0, Math.round((etat.deverrouillage.expire - Date.now()) / 60000));
-  banniere.textContent = 'Ouvert par ' + etat.deverrouillage.nom +
-    ' (' + etat.deverrouillage.role + ') — refermeture dans ' + restant + ' min';
+  const duree = restant >= 60
+    ? Math.floor(restant / 60) + ' h ' + ('0' + (restant % 60)).slice(-2)
+    : restant + ' min';
+  banniere.innerHTML = '<span class="porteur">' + echapper(etat.deverrouillage.nom) +
+    '</span><span class="restant">' + echapper(etat.deverrouillage.role) +
+    ' — refermeture dans ' + duree + '</span>';
   banniere.className = 'visible';
 }
 
@@ -963,7 +980,6 @@ function lireVerrouillage() {
 /* ─────────────────────────── Affichage ─────────────────────────── */
 
 function afficherDecision(decision) {
-  // Un scan remet le pavé en tête : la couleur décide, elle se lit d'abord.
   $('vue-scan').classList.remove('consultation');
   etat.derniereDecision = decision;
   const inconnu = decision.etat === 'NON_RECONNU';
@@ -1642,12 +1658,10 @@ function signalerParticipant() {
 
   Confirmation.ouvrir({
     titre: 'SIGNALER ' + (p.prenom + ' ' + p.nom).toUpperCase(),
-    texte: 'La note sera signée de votre nom et horodatée. Elle s\'ajoute aux ' +
-           'précédentes, sans jamais les effacer.',
-    champ: 'Fait daté, situé, factuel — par exemple : a refusé le contrôle au ' +
-           'poste B à 15 h 10',
-    note: 'Communicable à la personne concernée sur simple demande. Des faits, ' +
-          'jamais un jugement.',
+    champ: 'Fait daté, factuel et précis',
+    note: 'La note sera signée et horodatée. Ce signalement est légalement ' +
+          'communicable à la personne concernée sur simple demande (RGPD) : ' +
+          'des faits, pas de jugement.',
     valider: 'ENREGISTRER LA NOTE'
   }).then(function (texte) {
     if (texte === null) return;
@@ -2109,16 +2123,15 @@ function rafraichirStatistiques() {
   // traîne un cache de photos pleine résolution : 10 ko par photo signifie que
   // le dossier `Miniatures` était bien déclaré au préchargement, 142 ko qu'il
   // ne l'était pas — et sur deux mille participants, l'écart fait 280 Mo.
-  Promise.all([DB.occupation(), DB.statistiques()]).then(function (r) {
+  Promise.all([DB.occupation(), DB.poidsMoyenPhotos()]).then(function (r) {
     const occupation = r[0];
-    const stats = r[1];
-    if (!occupation) { definirTexte('stat-stockage', 'non mesurable'); return; }
-    definirTexte('stat-stockage',
-      Math.round(occupation.utilise / 1048576) + ' Mo sur ' +
-      Math.round(occupation.quota / 1048576) + ' Mo disponibles');
-    definirTexte('stat-poids-photo', stats.photos
-      ? Math.round(occupation.utilise / stats.photos / 1024) + ' ko environ'
-      : 'aucune photo en cache');
+    const poids = r[1];
+    definirTexte('stat-stockage', occupation
+      ? Math.round(occupation.utilise / 1048576) + ' Mo sur ' +
+        Math.round(occupation.quota / 1048576) + ' Mo'
+      : 'non mesurable');
+    definirTexte('stat-poids-photo',
+      poids ? Math.round(poids / 1024) + ' ko' : 'aucune photo en cache');
   }).catch(function (erreur) {
     console.warn('occupation : ' + erreur.message);
   });

@@ -425,6 +425,40 @@ function viderPhotos() {
   });
 }
 
+/**
+ * Poids moyen d'une photo en cache, mesuré sur un échantillon.
+ *
+ * ⚠️ Ne PAS déduire ce chiffre de l'occupation totale divisée par le nombre de
+ * photos : la base et l'historique y sont compris, et sur un cache presque vide
+ * le résultat est absurde — 9 862 ko pour une seule photo de 10 ko.
+ *
+ * On lit donc quelques blobs et on moyenne leur taille réelle. Vingt suffisent
+ * à distinguer une miniature de 10 ko d'une photo pleine résolution de 142 ko,
+ * qui est la seule question posée.
+ */
+function poidsMoyenPhotos(echantillon) {
+  const maximum = echantillon || 20;
+  return ouvrirDb().then(function (db) {
+    return new Promise(function (resoudre, rejeter) {
+      let total = 0, lues = 0;
+      const requete = db.transaction(['photos'], 'readonly').objectStore('photos').openCursor();
+      requete.onerror = function () { rejeter(requete.error); };
+      requete.onsuccess = function (evenement) {
+        const curseur = evenement.target.result;
+        if (!curseur || lues >= maximum) {
+          resoudre(lues ? Math.round(total / lues) : 0);
+          return;
+        }
+        if (curseur.value && typeof curseur.value.size === 'number') {
+          total += curseur.value.size;
+          lues++;
+        }
+        curseur.continue();
+      };
+    });
+  });
+}
+
 /** Octets réellement occupés sur l'appareil, tous magasins confondus. */
 function occupation() {
   if (!navigator.storage || !navigator.storage.estimate) {
@@ -468,6 +502,6 @@ window.DB = {
   ouvrirDb, appliquerDelta, lireCurseur, ecrireCurseur, lireMeta, ecrireMeta,
   chargerBase, rechercher, valeursDistinctes, normaliserTexte, lirePhoto, ecrirePhoto, compterPhotos,
   empilerScan, lireFileScans, retirerScans, compterFileScans, scansRecents,
-  purgerHistorique, viderHistorique, viderPhotos, occupation,
+  purgerHistorique, viderHistorique, viderPhotos, occupation, poidsMoyenPhotos,
   purgerBase, statistiques
 };
