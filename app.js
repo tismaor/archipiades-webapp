@@ -30,6 +30,7 @@ const etat = {
   deverrouillage: null,      // { nom, role, expire }
   vueDemandee: null,         // vue visée avant interception par le verrou
   demarrage: false,          // écran de première mise en service affiché
+  profilConnu: null,         // profil_donnees de la dernière synchronisation
   ecranOccupe: false,        // une décision ou une fiche est affichée
   derniereDecision: null,    // décision affichée, pour savoir qui l'on signale
   filtres: { ecole: '', statut: '' }   // conservés d'une recherche à l'autre
@@ -41,7 +42,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 14;
+const VERSION_APP = 15;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -367,6 +368,21 @@ function brancherReglages() {
   $('btn-sync').addEventListener('click', function () { synchroniser(true); });
   $('btn-photos').addEventListener('click', prechargerPhotos);
 
+  // Vider le cache photos sans toucher à la base ni aux scans en attente.
+  $('btn-vider-photos').addEventListener('click', function () {
+    if (!confirm('Vider le cache des photos ?\n\nLa base et les scans en attente ' +
+                 'sont conservés. Les photos seront retéléchargées au fil des ' +
+                 'scans, ou d\'un coup avec PRÉCHARGER LES PHOTOS.')) return;
+    DB.viderPhotos()
+      .then(function () {
+        message('Cache des photos vidé.');
+        rafraichirStatistiques();
+      })
+      .catch(function (erreur) {
+        message('Échec : ' + erreur.message, 'erreur');
+      });
+  });
+
   $('btn-purger').addEventListener('click', function () {
     if (!confirm('Effacer la base locale ? Les scans en attente sont conservés.')) return;
     DB.purgerBase()
@@ -412,6 +428,24 @@ function synchroniser(manuelle) {
         return API.sync(curseur.since, curseur.apres, valeurs[1] || '', 500);
       })
       .then(function (delta) {
+        // Changement de profil de données : la base locale contient des champs
+        // que le nouveau profil n'a PAS le droit de détenir — une note de
+        // sécurité conservée après le passage d'un poste SECURITE à un poste
+        // REPAS, par exemple. Le delta ne les enlèvera jamais, puisqu'il ne
+        // transporte que ce qui a changé côté serveur. On repart donc de zéro.
+        if (delta.profil_donnees && etat.profilConnu &&
+            delta.profil_donnees !== etat.profilConnu) {
+          etat.profilConnu = delta.profil_donnees;
+          return DB.purgerBase()
+            .then(function () { return DB.ecrireCurseur(0, ''); })
+            .then(function () {
+              message('Profil de données changé — rechargement complet de la base.');
+              recues = 0;
+              return parcourirPages();
+            });
+        }
+        if (delta.profil_donnees) etat.profilConnu = delta.profil_donnees;
+
         recues += (delta.participants || []).length;
         majProgressionDemarrage(recues);
         etat.cadenceS = delta.sync_interval_s || etat.cadenceS;
@@ -525,7 +559,7 @@ function effacerTerminal() {
 function rechargerBaseMemoire() {
   return Promise.all([DB.chargerBase(), DB.lireMeta('refs'), DB.lireMeta('point_controle'),
                       DB.scansRecents(3600000, 500), DB.lireMeta('cartes'),
-                      DB.lireMeta('peut_associer')])
+                      DB.lireMeta('peut_associer'), DB.lireMeta('profil_donnees')])
     .then(function (valeurs) {
       etat.base = valeurs[0];
       etat.refs = valeurs[1] || { droits: {}, formules: {}, services: [], config: {} };
@@ -533,6 +567,7 @@ function rechargerBaseMemoire() {
       etat.scansRecents = valeurs[3];
       etat.cartes = valeurs[4] || [];
       etat.peutAssocier = valeurs[5] === true;
+      if (!etat.profilConnu && valeurs[6]) etat.profilConnu = valeurs[6];
       // Les cartes arrivent avec le delta : l'affichage du cadenas doit suivre.
       montrerVue(etat.vueCourante);
     });
@@ -1787,6 +1822,26 @@ function rafraichirStatistiques() {
     definirTexte('stat-point', point || '—');
   }).catch(function () {});
   definirTexte('stat-version', 'v' + VERSION_APP);
+
+  // Espace réellement occupé sur l'appareil, et poids moyen d'une photo.
+  //
+  // C'est le chiffre qui dit si un téléphone qui se fait tuer par le système
+  // traîne un cache de photos pleine résolution : 10 ko par photo signifie que
+  // le dossier `Miniatures` était bien déclaré au préchargement, 142 ko qu'il
+  // ne l'était pas — et sur deux mille participants, l'écart fait 280 Mo.
+  Promise.all([DB.occupation(), DB.statistiques()]).then(function (r) {
+    const occupation = r[0];
+    const stats = r[1];
+    if (!occupation) { definirTexte('stat-stockage', 'non mesurable'); return; }
+    definirTexte('stat-stockage',
+      Math.round(occupation.utilise / 1048576) + ' Mo sur ' +
+      Math.round(occupation.quota / 1048576) + ' Mo disponibles');
+    definirTexte('stat-poids-photo', stats.photos
+      ? Math.round(occupation.utilise / stats.photos / 1024) + ' ko environ'
+      : 'aucune photo en cache');
+  }).catch(function (erreur) {
+    console.warn('occupation : ' + erreur.message);
+  });
 }
 
 /** Retour haptique : distinct selon la gravité, perceptible sans regarder. */

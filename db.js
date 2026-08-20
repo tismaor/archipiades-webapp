@@ -410,6 +410,31 @@ function purgerHistorique() {
  * peut contenir des passages non encore remontés, et l'historique porte la
  * mémoire anti-passback des dernières heures.
  */
+/**
+ * Vide le seul cache des photos, en gardant la base et les scans.
+ *
+ * Utile quand les photos en cache sont **périmées par leur poids** : celles
+ * téléchargées avant la déclaration du dossier `Miniatures` pèsent 142 ko au
+ * lieu de 10 ko. Deux mille d'entre elles occupent près de 280 Mo, que rien ne
+ * remplace jamais — `afficherPhoto` lit le cache en premier et ne redemande
+ * pas une photo qu'il a déjà.
+ */
+function viderPhotos() {
+  return transaction(['photos'], 'readwrite', function (tx) {
+    tx.objectStore('photos').clear();
+  });
+}
+
+/** Octets réellement occupés sur l'appareil, tous magasins confondus. */
+function occupation() {
+  if (!navigator.storage || !navigator.storage.estimate) {
+    return Promise.resolve(null);
+  }
+  return navigator.storage.estimate().then(function (e) {
+    return { utilise: e.usage || 0, quota: e.quota || 0 };
+  }).catch(function () { return null; });
+}
+
 function purgerBase() {
   return transaction(['participants', 'bracelets', 'photos', 'meta'], 'readwrite',
     function (tx) {
@@ -443,6 +468,6 @@ window.DB = {
   ouvrirDb, appliquerDelta, lireCurseur, ecrireCurseur, lireMeta, ecrireMeta,
   chargerBase, rechercher, valeursDistinctes, normaliserTexte, lirePhoto, ecrirePhoto, compterPhotos,
   empilerScan, lireFileScans, retirerScans, compterFileScans, scansRecents,
-  purgerHistorique, viderHistorique,
+  purgerHistorique, viderHistorique, viderPhotos, occupation,
   purgerBase, statistiques
 };
