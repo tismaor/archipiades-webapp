@@ -40,7 +40,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 10;
+const VERSION_APP = 11;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -134,6 +134,7 @@ document.addEventListener('DOMContentLoaded', function () {
   brancher('démarrage', brancherDemarrage);
 
   chargerReglages();
+  etat.deverrouillage = lireDeverrouillagePersiste();
 
   DB.ouvrirDb()
     .then(rechargerBaseMemoire)
@@ -232,6 +233,8 @@ function brancherDemarrage() {
   // de main quand on met en service à 7 h du matin.
   $('btn-demarrage-reglages').addEventListener('click', function () {
     fermerEcranDemarrage();
+    // Volontairement NON persisté : ce déverrouillage de dépannage contourne le
+    // verrou, il ne doit pas survivre au rechargement qui suit la correction.
     etat.deverrouillage = { nom: 'Dépannage', role: ROLE_DEPANNAGE,
                             expire: Date.now() + 5 * 60 * 1000 };
     montrerVue('vue-reglages');
@@ -446,6 +449,8 @@ function effacerTerminal() {
   clearTimeout(etat.minuteurSync);
   localStorage.removeItem('api_url');
   localStorage.removeItem('api_cle');
+  // Un terminal expiré ne laisse rien derrière lui, déverrouillage compris.
+  ecrireDeverrouillage(null);
   API.configurer('', '', localStorage.getItem('api_terminal') || '');
 
   return DB.purgerBase()
@@ -496,11 +501,56 @@ const VUES_RESERVEES = ['vue-reglages', 'vue-recherche'];
  * sur un téléphone neuf la base est vide, donc aucune carte n'est connue —
  * verrouiller sans condition rendrait l'application impossible à installer.
  */
+/**
+ * Clé de stockage du déverrouillage en cours.
+ *
+ * Il DOIT survivre à un rechargement de page : au guichet d'accueil, une
+ * vacation dure près de cinq heures, et Android ferme volontiers une PWA passée
+ * en arrière-plan. Sans persistance, l'opérateur qui verrouille son écran deux
+ * minutes doit rechercher son bracelet STAFF — alors que le classeur annonce
+ * plusieurs heures d'ouverture.
+ *
+ * Ce que cela change côté sécurité : rien de significatif. Un téléphone
+ * abandonné restait déjà ouvert jusqu'à l'expiration tant que l'application
+ * était à l'écran. Le verrou protège de la fausse manœuvre, pas du vol — c'est
+ * l'arbitrage assumé depuis le début, et `deverrouillage_s` reste le réglage
+ * qui le borne.
+ */
+const CLE_DEVERROUILLAGE = 'deverrouillage';
+
+/** Relit le déverrouillage persisté. Renvoie null s'il est absent ou périmé. */
+function lireDeverrouillagePersiste() {
+  try {
+    const brut = localStorage.getItem(CLE_DEVERROUILLAGE);
+    if (!brut) return null;
+    const ouverture = JSON.parse(brut);
+    if (!ouverture || !(ouverture.expire > Date.now())) {
+      localStorage.removeItem(CLE_DEVERROUILLAGE);
+      return null;
+    }
+    return ouverture;
+  } catch (erreur) {
+    // Contenu illisible : on referme, c'est le comportement sûr.
+    localStorage.removeItem(CLE_DEVERROUILLAGE);
+    return null;
+  }
+}
+
+function ecrireDeverrouillage(ouverture) {
+  etat.deverrouillage = ouverture;
+  if (ouverture) {
+    try { localStorage.setItem(CLE_DEVERROUILLAGE, JSON.stringify(ouverture)); }
+    catch (erreur) { console.warn('déverrouillage non persisté : ' + erreur.message); }
+  } else {
+    localStorage.removeItem(CLE_DEVERROUILLAGE);
+  }
+}
+
 function reglagesVerrouilles() {
   if (!API.estConfigure()) return false;
   if (!etat.cartes.length) return false;   // aucune carte déclarée : pas de verrou
   if (!etat.deverrouillage) return true;
-  if (etat.deverrouillage.expire < Date.now()) { etat.deverrouillage = null; return true; }
+  if (etat.deverrouillage.expire < Date.now()) { ecrireDeverrouillage(null); return true; }
   return false;
 }
 
@@ -531,9 +581,9 @@ function tenterDeverrouillage(uid) {
     return false;
   }
 
-  etat.deverrouillage = {
+  ecrireDeverrouillage({
     nom: carte.nom, role: carte.role, expire: Date.now() + dureeDeverrouillageMs()
-  };
+  });
   $('pave-verrou').className = '';
   $('verrou-detail').textContent = 'Scannez un bracelet STAFF pour déverrouiller';
   if (navigator.vibrate) navigator.vibrate(60);
