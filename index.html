@@ -153,9 +153,18 @@ label { display: block; margin-top: 16px; font-size: 12px; color: var(--gris); }
 .resultat .meta { font-size: 12px; color: var(--gris); margin-top: 2px; }
 
 /* ── Barre de navigation ──────────────────────────────────────────────── */
+/* ⚠️ Garde au bas de la barre d'onglets.
+   Android en navigation gestuelle réserve une bande d'une vingtaine de pixels
+   au bord inférieur : un balayage vers le haut y déclenche le retour à
+   l'accueil, maintenu il ouvre le gestionnaire des applications. Une barre
+   d'onglets collée au bord place donc ses zones tactiles À L'INTÉRIEUR de ce
+   déclencheur — et le moindre glissement du doigt fait disparaître
+   l'application sous les yeux de l'agent.
+   `env(safe-area-inset-bottom)` ne suffit pas : il vaut zéro sur la plupart des
+   Android. D'où les 14 px ajoutés systématiquement. */
 nav {
   display: flex; border-top: 1px solid var(--gris-sombre); flex: 0 0 auto;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
 }
 nav button {
   flex: 1; margin: 0; border: none; border-right: 1px solid var(--gris-sombre);
