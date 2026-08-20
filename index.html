@@ -223,6 +223,12 @@ button.attente { border-color: var(--orange); color: var(--orange); }
   font-size: 13px; line-height: 1.4; flex: 0 0 auto;
 }
 #panne.visible { display: block; }
+/* Une mise à jour disponible n'est pas une panne : fond neutre, pas de rouge.
+   Le rouge doit rester le signal d'un incident, sinon il ne veut plus rien dire. */
+#panne.information {
+  background: var(--gris-sombre); color: var(--texte);
+  border-bottom: 1px solid var(--gris);
+}
 
 /* Onglet verrouillé : l'agent doit COMPRENDRE, pas se heurter à un bouton mort. */
 nav button.verrouille { color: var(--gris-sombre); }
@@ -362,7 +368,7 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bottom: 8px; font-weight: 400; }
 </style>
 </head>
-<body>
+<body data-coque="20">
 
 <div id="panne"></div>
 

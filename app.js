@@ -33,6 +33,7 @@ const etat = {
   reseauTexte: 'en ligne',   // état réseau affiché dans le bandeau
   reseauClasse: '',
   alterneNfc: false,         // face « NFC actif » de l'alternance
+  avaitControleur: false,    // un Service Worker contrôlait déjà cette page
   profilConnu: null,         // profil_donnees de la dernière synchronisation
   ecranOccupe: false,        // une décision ou une fiche est affichée
   derniereDecision: null,    // décision affichée, pour savoir qui l'on signale
@@ -45,7 +46,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 19;
+const VERSION_APP = 20;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -191,6 +192,9 @@ document.addEventListener('DOMContentLoaded', function () {
       noms.forEach(function (nom) { caches.delete(nom); });
     });
   } else if ('serviceWorker' in navigator) {
+    // Un contrôleur déjà en place signifie qu'une version tournait avant : toute
+    // activation qui suivra sera donc une mise à jour, pas une installation.
+    etat.avaitControleur = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('sw.js').catch(function (erreur) {
       console.warn('Service Worker non enregistré : ' + erreur);
     });
@@ -290,6 +294,22 @@ const ELEMENTS_REQUIS = [
 ];
 
 function verifierIntegriteInterface() {
+  // Comparaison de version D'ABORD : elle détecte tous les décalages, y compris
+  // ceux qui ne se voient pas.
+  //
+  // Le contrôle par éléments manquants ne prend que si une balise a été ajoutée.
+  // Or une livraison peut ne changer que des libellés, des styles et un ordre
+  // d'affichage — c'est arrivé — et un `index.html` périmé passe alors le
+  // contrôle sans encombre : la version affichée s'incrémente, l'interface ne
+  // bouge pas, et rien ne le signale.
+  const coque = parseInt(document.body.dataset.coque, 10);
+  if (coque && coque !== VERSION_APP) {
+    signalerPanne('VERSION INCOHÉRENTE — page v' + coque + ' contre programme v' +
+      VERSION_APP + '. Fermez complètement l\'application et rouvrez-la ; ' +
+      'si cela persiste, videz les données du site.');
+    return false;
+  }
+
   const absents = ELEMENTS_REQUIS.filter(function (id) { return !$(id); });
   if (!absents.length) return true;
   signalerPanne('VERSION INCOHÉRENTE — le HTML affiché est plus ancien que le ' +
@@ -299,13 +319,23 @@ function verifierIntegriteInterface() {
   return false;
 }
 
-/** Bandeau non bloquant : une nouvelle version attend un rechargement. */
+/**
+ * Bandeau non bloquant : une nouvelle version attend un rechargement.
+ *
+ * ⚠️ Rien à annoncer à la PREMIÈRE installation. Le Service Worker s'active
+ * aussi la toute première fois, et le message apparaissait alors sur un
+ * appareil parfaitement à jour — en rouge, comme une panne, dès l'ouverture
+ * initiale. `etat.avaitControleur` distingue une mise à jour d'une installation.
+ */
 function signalerMiseAJour() {
+  if (!etat.avaitControleur) return;
   const zone = $('panne');
   if (!zone) return;
   zone.textContent = '↻ Nouvelle version installée — fermez et rouvrez ' +
     'l\'application pour l\'activer.';
-  zone.className = 'visible';
+  // Classe distincte : ce n'est pas une erreur, et le rouge de `panne` ferait
+  // croire à un incident au moment même où tout se passe bien.
+  zone.className = 'visible information';
 }
 
 /* ─────────────────────────── Réglages ─────────────────────────── */
