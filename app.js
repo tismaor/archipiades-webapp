@@ -46,7 +46,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 20;
+const VERSION_APP = 21;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -431,6 +431,11 @@ function brancherReglages() {
 
   $('btn-purger').addEventListener('click', function () {
     if (!confirm('Effacer la base locale ? Les scans en attente sont conservés.')) return;
+    // La purge emporte les cartes connues : le verrou se désarme donc avec
+    // elles, sans quoi l'appareil deviendrait impossible à remettre en service.
+    // Ce n'est pas une échappatoire — ce bouton est lui-même derrière le verrou.
+    armerVerrou(false);
+    ecrireDeverrouillage(null);
     DB.purgerBase()
       .then(rechargerBaseMemoire)
       .then(rafraichirBandeau)
@@ -583,8 +588,10 @@ function effacerTerminal() {
   clearTimeout(etat.minuteurSync);
   localStorage.removeItem('api_url');
   localStorage.removeItem('api_cle');
-  // Un terminal expiré ne laisse rien derrière lui, déverrouillage compris.
+  // Un terminal expiré ne laisse rien derrière lui : déverrouillage en cours,
+  // et verrou lui-même, puisqu'il n'y a plus de carte connue à opposer.
   ecrireDeverrouillage(null);
+  armerVerrou(false);
   API.configurer('', '', localStorage.getItem('api_terminal') || '');
 
   return DB.purgerBase()
@@ -611,6 +618,10 @@ function rechargerBaseMemoire() {
       etat.pointControle = valeurs[2] || '';
       etat.scansRecents = valeurs[3];
       etat.cartes = valeurs[4] || [];
+      // Dès qu'une carte est connue, le verrou s'arme DÉFINITIVEMENT sur cet
+      // appareil — y compris pour les ouvertures suivantes, avant même que la
+      // base ait fini de se relire.
+      if (etat.cartes.length) armerVerrou(true);
       etat.peutAssocier = valeurs[5] === true;
       if (!etat.profilConnu && valeurs[6]) etat.profilConnu = valeurs[6];
       // Les cartes arrivent avec le delta : l'affichage du cadenas doit suivre.
@@ -622,6 +633,29 @@ function rechargerBaseMemoire() {
 
 /** Vues réservées, accessibles seulement après présentation d'une carte. */
 const VUES_RESERVEES = ['vue-reglages', 'vue-recherche'];
+
+/**
+ * Le verrou est-il ARMÉ sur cet appareil ?
+ *
+ * ⚠️ La réponse ne peut PAS dépendre de `etat.cartes`, qui n'est renseigné
+ * qu'une fois la base relue depuis IndexedDB — plusieurs centaines de
+ * millisecondes après l'ouverture. Pendant cette fenêtre, les onglets réservés
+ * étaient grands ouverts : il suffisait de fermer et rouvrir l'application pour
+ * passer devant l'écran de chargement et filer dans RÉGLAGES.
+ *
+ * Un drapeau persistant répond donc immédiatement, dès le premier trait de
+ * code, avant toute lecture asynchrone.
+ */
+const CLE_VERROU = 'verrou_arme';
+
+function verrouArme() {
+  return etat.cartes.length > 0 || localStorage.getItem(CLE_VERROU) === '1';
+}
+
+function armerVerrou(actif) {
+  if (actif) localStorage.setItem(CLE_VERROU, '1');
+  else localStorage.removeItem(CLE_VERROU);
+}
 
 /**
  * Réglages ET recherche ne s'ouvrent qu'après présentation d'une carte STAFF
@@ -682,8 +716,12 @@ function ecrireDeverrouillage(ouverture) {
 }
 
 function reglagesVerrouilles() {
-  if (!API.estConfigure()) return false;
-  if (!etat.cartes.length) return false;   // aucune carte déclarée : pas de verrou
+  // ⚠️ On NE teste PLUS `API.estConfigure()`. C'était la seconde faille :
+  // effacer l'URL ou la clé depuis les réglages suffisait à désarmer le verrou
+  // pour de bon. Un appareil déjà provisionné reste verrouillé quoi qu'on fasse
+  // de sa configuration ; seule une purge complète le désarme, et elle est
+  // elle-même derrière le verrou.
+  if (!verrouArme()) return false;   // appareil neuf : mise en service possible
   if (!etat.deverrouillage) return true;
   if (etat.deverrouillage.expire < Date.now()) { ecrireDeverrouillage(null); return true; }
   return false;

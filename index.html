@@ -192,8 +192,11 @@ nav button.actif { color: var(--texte); border-top: 2px solid var(--texte); }
 /* ── Attribution de bracelet (guichet d'accueil) ───────────────────────── */
 #association { display: none; margin-top: 16px; }
 #association.visible { display: block; }
-#assoc-etat { font-size: 15px; margin-bottom: 4px; min-height: 0; }
-#assoc-etat:not(:empty) { margin-bottom: 10px; }
+/* Vides, ces zones de message occupaient quand même leur marge et creusaient un
+   écart entre deux boutons voisins. On les retire du flux tant qu'elles n'ont
+   rien à dire. */
+#assoc-etat { display: none; font-size: 15px; }
+#assoc-etat:not(:empty) { display: block; margin-bottom: 10px; }
 #assoc-etat.succes { color: var(--vert); font-weight: 700; }
 #assoc-etat.erreur { color: var(--orange); }
 #assoc-etat.attente { color: var(--gris); }
@@ -240,7 +243,7 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
    bloqué sur la dernière personne scannée. */
 #btn-effacer {
   display: none; border: none; background: none; color: var(--texte);
-  padding: 18px 0 6px; font-size: 14px; text-align: center; width: 100%;
+  padding: 22px 0 6px; font-size: 14px; text-align: center; width: 100%;
 }
 #btn-effacer.visible { display: block; }
 
@@ -277,6 +280,23 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 #vue-scan.consultation > #identite { order: 1; }
 #vue-scan.consultation > #pave { order: 2; }
 
+/* Espacement régulier entre les trois blocs de la fiche — identité, pavé de
+   consultation, actions. Les marges individuelles des blocs sont neutralisées
+   au profit d'un `gap` unique : trois écarts identiques valent mieux que trois
+   marges accordées à la main, qui redivergent à la première modification. */
+/* Deux écarts de bloc identiques — identité → consultation → actions — et un
+   écart plus serré entre les trois boutons, qui forment un groupe. On règle par
+   marges plutôt que par `gap` : un `gap` uniforme séparerait les boutons autant
+   que les blocs, et le groupe d'actions ne se lirait plus comme un groupe. */
+#vue-scan.consultation > #identite { margin-top: 0; }
+#vue-scan.consultation > #pave { margin-top: 18px; }
+#vue-scan.consultation > #signalement { margin-top: 18px; }
+#vue-scan.consultation > #signalement > #btn-signaler { margin-top: 0; }
+#vue-scan.consultation > #association { margin-top: 0; }
+#vue-scan.consultation > #repas { margin-top: 18px; }
+/* La sortie se détache : elle n'appartient pas au groupe des actions. */
+#vue-scan.consultation > #btn-effacer { margin-top: 10px; }
+
 /* ── Historique local ─────────────────────────────────────────────────── */
 #compte-historique { font-size: 12px; color: var(--gris); margin: 12px 0; }
 .entree-historique {
@@ -305,7 +325,8 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
   border: 1px solid var(--gris); padding: 10px; font: inherit; font-size: 15px;
   resize: vertical;
 }
-#signalement-etat { font-size: 14px; margin-top: 8px; }
+#signalement-etat { display: none; font-size: 14px; }
+#signalement-etat:not(:empty) { display: block; margin-top: 8px; }
 #signalement-etat.succes { color: var(--vert); font-weight: 700; }
 #signalement-etat.erreur { color: var(--orange); }
 
@@ -368,7 +389,7 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bottom: 8px; font-weight: 400; }
 </style>
 </head>
-<body data-coque="20">
+<body data-coque="21">
 
 <div id="panne"></div>
 
