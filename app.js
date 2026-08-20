@@ -30,6 +30,9 @@ const etat = {
   deverrouillage: null,      // { nom, role, expire }
   vueDemandee: null,         // vue visée avant interception par le verrou
   demarrage: false,          // écran de première mise en service affiché
+  reseauTexte: 'en ligne',   // état réseau affiché dans le bandeau
+  reseauClasse: '',
+  alterneNfc: false,         // face « NFC actif » de l'alternance
   profilConnu: null,         // profil_donnees de la dernière synchronisation
   ecranOccupe: false,        // une décision ou une fiche est affichée
   derniereDecision: null,    // décision affichée, pour savoir qui l'on signale
@@ -42,7 +45,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 18;
+const VERSION_APP = 19;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -138,6 +141,7 @@ document.addEventListener('DOMContentLoaded', function () {
   brancher('signalement', brancherSignalement);
 
   brancher('intégrité', verifierIntegriteInterface);
+  brancher('bandeau', lancerAlternanceBandeau);
 
   chargerReglages();
   etat.deverrouillage = lireDeverrouillagePersiste();
@@ -425,7 +429,7 @@ function synchroniser(manuelle) {
   if (!navigator.onLine) { planifierSync(); return Promise.resolve(); }
 
   etat.syncEnCours = true;
-  $('etat-reseau').textContent = 'sync…';
+  definirEtatReseau('sync…');
 
   // La synchronisation ne s'affiche QUE dans le bandeau du haut : c'est une
   // activité de fond, elle n'a rien à faire dans le pavé de décision que
@@ -482,7 +486,7 @@ function synchroniser(manuelle) {
     .then(rechargerBaseMemoire)
     .then(envoyerFileScans)
     .then(function () {
-      $('etat-reseau').textContent = 'à jour';
+      definirEtatReseau('à jour');
       afficherEcranPret();
       // On ne libère l'écran de démarrage que si la base est RÉELLEMENT peuplée :
       // une sync réussie sur un classeur vide ne rend pas l'appareil utilisable.
@@ -500,8 +504,7 @@ function synchroniser(manuelle) {
       return verifierPeremption();
     })
     .catch(function (erreur) {
-      $('etat-reseau').textContent = 'échec sync';
-      $('etat-reseau').className = 'alerte-reseau';
+      definirEtatReseau('échec sync', 'alerte-reseau');
       echecEcranDemarrage(erreur.message);
       if (manuelle) message('Synchronisation impossible : ' + erreur.message, 'erreur');
       console.warn('sync : ' + erreur.message);
@@ -762,8 +765,12 @@ function demarrerNfc() {
   // exigence du navigateur, on ne peut pas démarrer la lecture au chargement.
   lecteur.scan().then(function () {
     etat.lecteurNfc = lecteur;
-    $('btn-nfc').textContent = 'LECTURE NFC ACTIVE';
+    // L'état de la lecture vit désormais dans le bandeau du haut, en alternance
+    // avec l'état réseau : le bouton n'a plus rien à dire et libère la place.
+    $('btn-nfc').style.display = 'none';
     $('btn-nfc').disabled = true;
+    etat.alterneNfc = true;
+    rendreEtatReseau();
     $('btn-verrou-nfc').textContent = 'LECTURE NFC ACTIVE — PRÉSENTEZ LA CARTE';
     $('btn-verrou-nfc').disabled = true;
     afficherPave('PRÊT', 'Approchez un bracelet', null, true);
@@ -825,11 +832,22 @@ function traiterScan(uid) {
   etat.ficheCourante = null;
   fermerSignalement();
 
-  // Un écran bloquant doit être acquitté avant tout nouveau scan… sauf si l'on
-  // présente un AUTRE bracelet : la file ne doit pas s'arrêter parce que
-  // quelqu'un s'est éloigné sans acquitter.
-  if (etat.blocage && etat.blocage.uid === uid) return;
-  if (etat.blocage) leverBlocage();
+  // ⚠️ Un écran bloquant fige la lecture, y compris pour un AUTRE bracelet.
+  //
+  // Auparavant, présenter la personne suivante levait le blocage sans
+  // acquittement : le contrôle renforcé disparaissait de l'écran sans avoir eu
+  // lieu, et sans rien laisser dans le journal. La file passait, l'information
+  // aussi.
+  //
+  // La sortie reste garantie sans immobiliser le poste : ACQUITTER, ou
+  // l'expiration automatique au bout de `passback_expiration_s` (60 s par
+  // défaut), journalisée comme telle.
+  if (etat.blocage) {
+    if (navigator.vibrate) navigator.vibrate([60, 60, 60]);
+    message('Contrôle renforcé en cours — acquittez avant le scan suivant.',
+            'erreur');
+    return;
+  }
 
   const decision = evaluerScan({
     uid: uid,
@@ -874,6 +892,8 @@ function lireVerrouillage() {
 /* ─────────────────────────── Affichage ─────────────────────────── */
 
 function afficherDecision(decision) {
+  // Un scan remet le pavé en tête : la couleur décide, elle se lit d'abord.
+  $('vue-scan').classList.remove('consultation');
   etat.derniereDecision = decision;
   const inconnu = decision.etat === 'NON_RECONNU';
   afficherPave(decision.libelle, decision.detail, decision.couleur, false,
@@ -950,6 +970,7 @@ function afficherEcranPret() {
  * quelqu'un d'autre alors qu'il affiche encore un nom et une photo.
  */
 function reinitialiserEcran() {
+  $('vue-scan').classList.remove('consultation');
   afficherPave('PRÊT', 'Approchez un bracelet', null, true);
   $('identite').className = '';
   $('alerte').className = '';
@@ -1317,6 +1338,7 @@ function afficherFiche(numero) {
   // l'opérateur à la synchronisation suivante — avec la photo, la fiche et,
   // au guichet, l'attribution en cours.
   afficherPave('CONSULTATION', 'Recherche des passages…', null, false);
+  $('vue-scan').classList.add('consultation');
   etat.ficheCourante = p;
   resumerPassages(p.numero);
 
@@ -1415,7 +1437,7 @@ function rafraichirBoutonsAssociation() {
     attribuer.className = 'principal';
   }
 
-  suspendre.textContent = 'SUSPENDRE LE BRACELET';
+  suspendre.textContent = 'SUSPENDRE ET INTERDIRE L\'ACCÈS';
   suspendre.className = porte ? '' : 'inerte';
   suspendre.disabled = !porte || etat.association.enAttente;
 }
@@ -1862,15 +1884,49 @@ function montrerVue(identifiant) {
   if (identifiant === 'vue-historique') afficherHistorique();
 }
 
+/**
+ * États réseau qui ne cèdent JAMAIS la place à l'indicateur NFC.
+ *
+ * « NFC actif » est une information de confort ; « hors ligne » ou « échec
+ * sync » demandent une action. Les masquer cinq secondes sur dix serait la
+ * meilleure façon de les faire manquer.
+ */
+const ETATS_RESEAU_PRIORITAIRES = ['sync…', 'hors ligne', 'échec sync'];
+
+/** Durée d'affichage de chaque face de l'alternance. */
+const ALTERNANCE_MS = 5000;
+
+function definirEtatReseau(texte, classe) {
+  etat.reseauTexte = texte;
+  etat.reseauClasse = classe || '';
+  rendreEtatReseau();
+}
+
+function rendreEtatReseau() {
+  const zone = $('etat-reseau');
+  if (!zone) return;
+  const prioritaire = ETATS_RESEAU_PRIORITAIRES.indexOf(etat.reseauTexte) !== -1;
+  const afficherNfc = !!etat.lecteurNfc && !prioritaire && etat.alterneNfc;
+  zone.textContent = afficherNfc ? 'NFC actif' : (etat.reseauTexte || 'en ligne');
+  zone.className = afficherNfc ? 'nfc-actif' : etat.reseauClasse;
+}
+
+/** Bascule l'alternance. Un seul minuteur pour toute l'application. */
+function lancerAlternanceBandeau() {
+  setInterval(function () {
+    if (!etat.lecteurNfc) { etat.alterneNfc = false; return; }
+    etat.alterneNfc = !etat.alterneNfc;
+    rendreEtatReseau();
+  }, ALTERNANCE_MS);
+}
+
 function rafraichirBandeau() {
   return DB.compterFileScans().then(function (attente) {
     $('etat-file').textContent = attente + ' en attente';
     if (!navigator.onLine) {
-      $('etat-reseau').textContent = 'hors ligne';
-      $('etat-reseau').className = 'alerte-reseau';
-    } else if ($('etat-reseau').textContent === 'hors ligne') {
-      $('etat-reseau').textContent = 'en ligne';
-      $('etat-reseau').className = '';
+      definirEtatReseau('hors ligne', 'alerte-reseau');
+    } else if (etat.reseauTexte === 'hors ligne') {
+      definirEtatReseau('en ligne');
     }
   });
 }

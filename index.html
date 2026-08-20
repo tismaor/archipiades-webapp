@@ -228,11 +228,48 @@ button.attente { border-color: var(--orange); color: var(--orange); }
 nav button.verrouille { color: var(--gris-sombre); }
 nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 
-/* Retour à l'écran d'accueil. Discret — il ne doit pas concurrencer ACQUITTER
-   ni le bouton NFC — mais toujours présent dès qu'il y a quelque chose à
-   effacer, sans quoi on se croit bloqué sur la dernière personne scannée. */
-#btn-effacer { display: none; color: var(--gris); }
+/* Retour à l'écran d'accueil : une SORTIE, pas une action. Sans cadre et sans
+   emphase, elle ne concurrence ni ACQUITTER ni les boutons de la fiche — mais
+   reste présente dès qu'il y a quelque chose à quitter, sans quoi on se croit
+   bloqué sur la dernière personne scannée. */
+#btn-effacer {
+  display: none; border: none; background: none; color: var(--texte);
+  padding: 18px 0 6px; font-size: 14px; text-align: center; width: 100%;
+}
 #btn-effacer.visible { display: block; }
+
+/* Le bloc d'attribution passe APRÈS le signalement : signaler est le geste le
+   plus fréquent, attribuer vient ensuite, suspendre en dernier. */
+#btn-attribuer { font-weight: 400; }
+/* Suspendre bloque quelqu'un à TOUS les points de contrôle. C'est la seule
+   action de la fiche qui mérite du rouge — la couleur reste réservée à ce qui
+   engage vraiment. */
+#btn-suspendre {
+  background: var(--rouge); color: #fff; border-color: var(--rouge);
+  font-weight: 700;
+}
+#btn-suspendre.inerte {
+  background: none; color: var(--gris-sombre); border-color: var(--gris-sombre);
+  font-weight: 400;
+}
+#btn-suspendre:disabled:not(.inerte) { opacity: 0.55; }
+
+/* Alternance NFC dans le bandeau : même gris que le reste, l'information est
+   le texte, pas une couleur de plus. */
+#etat-reseau.nfc-actif { color: var(--texte); }
+
+/* En consultation, le pavé passe SOUS la fiche : on cherchait la personne, on
+   la regarde d'abord. Sur un scan au contraire, la couleur décide et doit
+   rester en tête — l'ordre du document est alors respecté tel quel.
+
+   ⚠️ `display: flex` est porté par `.visible` et NON par `#vue-scan` seul :
+   un sélecteur d'identifiant l'emporterait sur `.vue { display: none }` et la
+   vue resterait affichée en permanence, par-dessus les autres. */
+#vue-scan.visible { display: flex; flex-direction: column; }
+#vue-scan.consultation > * { order: 3; }
+#vue-scan.consultation > #alerte { order: 0; }
+#vue-scan.consultation > #identite { order: 1; }
+#vue-scan.consultation > #pave { order: 2; }
 
 /* ── Historique local ─────────────────────────────────────────────────── */
 #compte-historique { font-size: 12px; color: var(--gris); margin: 12px 0; }
@@ -254,7 +291,7 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 /* ── Signalement ──────────────────────────────────────────────────────── */
 #signalement { display: none; margin-top: 16px; }
 #signalement.visible { display: block; }
-#btn-signaler { color: var(--gris); }
+#btn-signaler { font-weight: 400; }
 #signalement-saisie { display: none; }
 #signalement-saisie.visible { display: block; }
 #champ-signalement {
@@ -380,12 +417,6 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
       </div>
     </div>
 
-    <div id="association">
-      <div id="assoc-etat"></div>
-      <button class="principal" id="btn-attribuer">ATTRIBUER UN BRACELET</button>
-      <button id="btn-suspendre">SUSPENDRE LE BRACELET</button>
-    </div>
-
     <div id="signalement">
       <button id="btn-signaler">✎ SIGNALER CE PARTICIPANT</button>
       <div id="signalement-saisie">
@@ -402,6 +433,12 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
       <div id="signalement-etat"></div>
     </div>
 
+    <div id="association">
+      <div id="assoc-etat"></div>
+      <button id="btn-attribuer">ATTRIBUER UN BRACELET</button>
+      <button id="btn-suspendre">SUSPENDRE ET INTERDIRE L'ACCÈS</button>
+    </div>
+
     <div id="repas">
       <div class="titre">Régime</div>
       <div class="regime" id="regime">—</div>
@@ -416,7 +453,7 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
       <div class="compte" id="compte-a-rebours"></div>
     </div>
 
-    <button id="btn-effacer">✕ EFFACER L'ÉCRAN</button>
+    <button id="btn-effacer">RETOUR À L'ÉCRAN D'ACCUEIL ›</button>
 
     <button class="principal" id="btn-nfc">DÉMARRER LA LECTURE NFC</button>
 
