@@ -42,7 +42,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 15;
+const VERSION_APP = 16;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -174,7 +174,19 @@ document.addEventListener('DOMContentLoaded', function () {
   });
   window.addEventListener('offline', rafraichirBandeau);
 
-  if ('serviceWorker' in navigator) {
+  // En développement local, PAS de Service Worker : servi « cache d'abord », il
+  // masque chaque modification jusqu'au prochain changement de nom de cache, et
+  // l'on teste alors sans le savoir une version périmée.
+  const enDeveloppement = location.hostname === 'localhost'
+                       || location.hostname === '127.0.0.1';
+  if (enDeveloppement && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (r) { r.unregister(); });
+    });
+    caches.keys().then(function (noms) {
+      noms.forEach(function (nom) { caches.delete(nom); });
+    });
+  } else if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function (erreur) {
       console.warn('Service Worker non enregistré : ' + erreur);
     });
@@ -923,8 +935,9 @@ function afficherPave(libelle, detail, couleur, systeme, uid) {
  */
 function afficherEcranPret() {
   // Ne s'applique qu'à un pavé « système » : une fin de synchronisation ne doit
-  // jamais effacer la décision que l'agent est en train de lire.
-  if (!etat.paveSysteme || etat.blocage) return;
+  // jamais effacer ce que l'agent est en train de lire — ni une décision, ni
+  // une fiche ouverte en consultation.
+  if (!etat.paveSysteme || etat.blocage || etat.ecranOccupe) return;
   reinitialiserEcran();
 }
 
@@ -1292,8 +1305,14 @@ function afficherFiche(numero) {
   const p = etat.base.participants.get(numero);
   if (!p) return;
   montrerVue('vue-scan');
-  afficherPave('CONSULTATION', 'Aucun passage enregistré', null, true);
+  // ⚠️ `systeme` reste FAUX. Un pavé « système » est celui qu'une fin de
+  // synchronisation a le droit de remplacer par « PRÊT ». Une consultation n'en
+  // est pas un : marquée système, elle disparaissait sous les yeux de
+  // l'opérateur à la synchronisation suivante — avec la photo, la fiche et,
+  // au guichet, l'attribution en cours.
+  afficherPave('CONSULTATION', 'Recherche des passages…', null, false);
   etat.ficheCourante = p;
+  resumerPassages(p.numero);
 
   $('alerte').textContent = p.commentaire ? '⚠ ' + p.commentaire : '';
   $('alerte').className = p.commentaire ? 'visible' : '';
@@ -1314,6 +1333,40 @@ function afficherFiche(numero) {
   etat.ecranOccupe = true;
   majBoutonEffacer();
   majBlocSignalement();
+}
+
+/**
+ * Rappelle les passages connus de ce participant, sous le pavé de consultation.
+ *
+ * ⚠️ Formulation précise : l'historique local ne contient QUE les scans de ce
+ * terminal. Écrire « aucun passage » laisserait croire que la personne n'est
+ * jamais passée nulle part, alors qu'elle a très bien pu être scannée à une
+ * autre entrée. On dit donc « sur ce poste », et on ne prétend rien de plus.
+ */
+function resumerPassages(numero) {
+  etat.demandeResume = (etat.demandeResume || 0) + 1;
+  const demande = etat.demandeResume;
+
+  DB.scansRecents(HISTORIQUE_AFFICHE_MS, 500).then(function (scans) {
+    // Une consultation lente ne doit pas écraser la fiche suivante.
+    if (demande !== etat.demandeResume || !etat.ficheCourante
+        || etat.ficheCourante.numero !== numero) return;
+
+    const siens = scans.filter(function (s) { return s.numero === numero; });
+    if (!siens.length) {
+      $('pave-detail').textContent = 'Aucun passage sur ce poste';
+      return;
+    }
+    const dernier = siens[0];
+    const libelle = (typeof LIBELLES !== 'undefined' && LIBELLES[dernier.decision])
+      ? LIBELLES[dernier.decision] : String(dernier.decision || '');
+    $('pave-detail').textContent =
+      siens.length + (siens.length > 1 ? ' passages' : ' passage') +
+      ' sur ce poste — dernier à ' + heureCourte(dernier.ts_terminal) +
+      ' : ' + libelle;
+  }).catch(function (erreur) {
+    console.warn('résumé des passages : ' + erreur.message);
+  });
 }
 
 /* ─────────────────────── Attribution de bracelet ─────────────────────── */
