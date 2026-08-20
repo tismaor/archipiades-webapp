@@ -190,20 +190,60 @@ nav button.actif { color: var(--texte); border-top: 2px solid var(--texte); }
 #saisie-manuelle.visible { display: block; }
 
 /* ── Attribution de bracelet (guichet d'accueil) ───────────────────────── */
-#association { display: none; margin-top: 16px; }
-#association.visible { display: block; }
-/* Vides, ces zones de message occupaient quand même leur marge et creusaient un
-   écart entre deux boutons voisins. On les retire du flux tant qu'elles n'ont
-   rien à dire. */
-#assoc-etat { display: none; font-size: 15px; }
-#assoc-etat:not(:empty) { display: block; margin-bottom: 10px; }
-#assoc-etat.succes { color: var(--vert); font-weight: 700; }
-#assoc-etat.erreur { color: var(--orange); }
-#assoc-etat.attente { color: var(--gris); }
 /* Un bouton grisé doit dire POURQUOI il est inerte, d'où le cadenas. */
-button.inerte { color: var(--gris-sombre); border-color: var(--gris-sombre); cursor: default; }
-button.inerte::after { content: " 🔒"; font-size: 11px; }
-button.attente { border-color: var(--orange); color: var(--orange); }
+/* ── Les trois actions de la fiche ─────────────────────────────────────────
+   Un seul gabarit, trois états, et rien d'autre :
+     .action           — disponible : cadre blanc, texte blanc
+     .action.danger    — conséquence hors du poste : blanc sur rouge
+     .action.inerte    — sans objet ici : gris sombre et cadenas
+   Même hauteur, même taille de texte, même graisse pour les trois : c'est la
+   COULEUR qui distingue, jamais la typographie. */
+#actions { display: none; }
+#actions.visible { display: block; }
+button.action {
+  font-size: 15px; font-weight: 400; padding: 15px;
+  border: 1px solid var(--texte); color: var(--texte); background: var(--fond);
+}
+button.action.danger {
+  background: var(--rouge); color: #fff; border-color: var(--rouge);
+}
+button.action.inerte {
+  background: var(--fond); color: var(--gris-sombre);
+  border-color: var(--gris-sombre); cursor: default;
+}
+button.action.inerte::after { content: " 🔒"; font-size: 11px; }
+button.action.discret { border-color: var(--gris); color: var(--gris); }
+
+/* ── Panneau de confirmation ───────────────────────────────────────────── */
+#confirmation {
+  display: none; position: fixed; inset: 0; z-index: 90;
+  background: rgba(0, 0, 0, 0.88);
+  align-items: center; justify-content: center; padding: 20px;
+}
+#confirmation.visible { display: flex; }
+#confirmation-boite {
+  width: 100%; max-width: 420px; max-height: 92vh; overflow-y: auto;
+  border: 2px solid var(--texte); background: var(--fond); padding: 20px;
+}
+#confirmation-titre {
+  font-size: 17px; font-weight: 700; line-height: 1.3; margin-bottom: 12px;
+}
+#confirmation.danger #confirmation-titre { color: var(--rouge); }
+#confirmation-texte { font-size: 15px; line-height: 1.45; }
+#confirmation-champ {
+  display: none; width: 100%; margin-top: 14px; padding: 12px;
+  background: var(--fond); color: var(--texte); border: 1px solid var(--gris);
+  font-family: inherit; font-size: 16px; resize: vertical;
+}
+#confirmation-champ.visible { display: block; }
+#confirmation-note { display: none; }
+#confirmation-note:not(:empty) { display: block; }
+#confirmation-etat { display: none; font-size: 14px; margin-top: 12px; }
+#confirmation-etat:not(:empty) { display: block; }
+#confirmation-etat.erreur { color: var(--orange); }
+#confirmation-etat.attente { color: var(--texte); }
+#confirmation-boite button { margin-top: 16px; }
+#confirmation-boite button + button { margin-top: 10px; }
 
 /* ── Filtres de recherche ──────────────────────────────────────────────── */
 .filtres { display: flex; gap: 8px; }
@@ -247,21 +287,6 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 }
 #btn-effacer.visible { display: block; }
 
-/* Le bloc d'attribution passe APRÈS le signalement : signaler est le geste le
-   plus fréquent, attribuer vient ensuite, suspendre en dernier. */
-#btn-attribuer { font-weight: 400; }
-/* Suspendre bloque quelqu'un à TOUS les points de contrôle. C'est la seule
-   action de la fiche qui mérite du rouge — la couleur reste réservée à ce qui
-   engage vraiment. */
-#btn-suspendre {
-  background: var(--rouge); color: #fff; border-color: var(--rouge);
-  font-weight: 700;
-}
-#btn-suspendre.inerte {
-  background: none; color: var(--gris-sombre); border-color: var(--gris-sombre);
-  font-weight: 400;
-}
-#btn-suspendre:disabled:not(.inerte) { opacity: 0.55; }
 
 /* Alternance NFC dans le bandeau : même gris que le reste, l'information est
    le texte, pas une couleur de plus. */
@@ -290,9 +315,8 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
    que les blocs, et le groupe d'actions ne se lirait plus comme un groupe. */
 #vue-scan.consultation > #identite { margin-top: 0; }
 #vue-scan.consultation > #pave { margin-top: 18px; }
-#vue-scan.consultation > #signalement { margin-top: 18px; }
-#vue-scan.consultation > #signalement > #btn-signaler { margin-top: 0; }
-#vue-scan.consultation > #association { margin-top: 0; }
+#vue-scan.consultation > #actions { margin-top: 18px; }
+#vue-scan.consultation > #actions > button:first-child { margin-top: 0; }
 #vue-scan.consultation > #repas { margin-top: 18px; }
 /* La sortie se détache : elle n'appartient pas au groupe des actions. */
 #vue-scan.consultation > #btn-effacer { margin-top: 10px; }
@@ -314,21 +338,6 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 .entree-historique .decision.orange { color: var(--orange); }
 .entree-historique .decision.neutre { color: var(--gris); }
 
-/* ── Signalement ──────────────────────────────────────────────────────── */
-#signalement { display: none; margin-top: 16px; }
-#signalement.visible { display: block; }
-#btn-signaler { font-weight: 400; }
-#signalement-saisie { display: none; }
-#signalement-saisie.visible { display: block; }
-#champ-signalement {
-  width: 100%; background: var(--fond); color: var(--texte);
-  border: 1px solid var(--gris); padding: 10px; font: inherit; font-size: 15px;
-  resize: vertical;
-}
-#signalement-etat { display: none; font-size: 14px; }
-#signalement-etat:not(:empty) { display: block; margin-top: 8px; }
-#signalement-etat.succes { color: var(--vert); font-weight: 700; }
-#signalement-etat.erreur { color: var(--orange); }
 
 /* ── Écran de démarrage ────────────────────────────────────────────────── */
 #demarrage {
@@ -389,7 +398,7 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bottom: 8px; font-weight: 400; }
 </style>
 </head>
-<body data-coque="21">
+<body data-coque="22">
 
 <div id="panne"></div>
 
@@ -410,6 +419,28 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
   <div id="demarrage-secours">
     <button class="principal" id="btn-demarrage-reessayer">RÉESSAYER</button>
     <button id="btn-demarrage-reglages">OUVRIR LES RÉGLAGES</button>
+  </div>
+</div>
+
+<!-- ── Confirmation ─────────────────────────────────────────────────────
+     Un SEUL mécanisme pour les trois actions de la fiche. Auparavant chacune
+     avait sa grammaire : un bloc dépliant pour le signalement, un bouton qui
+     se changeait en ANNULER pour l'attribution, une boîte système pour la
+     suspension. Trois boutons, trois façons de confirmer, et une mise en page
+     qui bougeait sous les doigts.
+
+     Le panneau couvre l'écran : c'est ce qui empêche l'appui accidentel — la
+     raison pour laquelle une boîte de dialogue restait préférable — sans
+     figer l'application comme le fait `confirm()`. -->
+<div id="confirmation">
+  <div id="confirmation-boite">
+    <div id="confirmation-titre"></div>
+    <div id="confirmation-texte"></div>
+    <textarea id="confirmation-champ" rows="4" maxlength="300"></textarea>
+    <div id="confirmation-note" class="note"></div>
+    <div id="confirmation-etat"></div>
+    <button class="action" id="confirmation-valider">VALIDER</button>
+    <button class="action discret" id="confirmation-annuler">ANNULER</button>
   </div>
 </div>
 
@@ -444,26 +475,10 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
       </div>
     </div>
 
-    <div id="signalement">
-      <button id="btn-signaler">✎ SIGNALER CE PARTICIPANT</button>
-      <div id="signalement-saisie">
-        <label for="champ-signalement">Fait constaté — daté, situé, factuel</label>
-        <textarea id="champ-signalement" rows="3" maxlength="300"
-                  placeholder="A refusé le contrôle et insulté l'agent."></textarea>
-        <div class="note">
-          Communicable à la personne concernée sur simple demande. Des faits,
-          jamais un jugement. La note sera signée de votre nom et horodatée.
-        </div>
-        <button class="principal" id="btn-signalement-envoyer">ENVOYER LA NOTE</button>
-        <button id="btn-signalement-annuler">ANNULER</button>
-      </div>
-      <div id="signalement-etat"></div>
-    </div>
-
-    <div id="association">
-      <div id="assoc-etat"></div>
-      <button id="btn-attribuer">ATTRIBUER UN BRACELET</button>
-      <button id="btn-suspendre">SUSPENDRE ET INTERDIRE L'ACCÈS</button>
+    <div id="actions">
+      <button class="action" id="btn-signaler">SIGNALER CE PARTICIPANT</button>
+      <button class="action" id="btn-attribuer">ATTRIBUER UN BRACELET</button>
+      <button class="action danger" id="btn-suspendre">SUSPENDRE ET INTERDIRE L'ACCÈS</button>
     </div>
 
     <div id="repas">

@@ -30,6 +30,7 @@ const etat = {
   deverrouillage: null,      // { nom, role, expire }
   vueDemandee: null,         // vue visée avant interception par le verrou
   demarrage: false,          // écran de première mise en service affiché
+  attribution: null,         // participant en attente d'un bracelet
   reseauTexte: 'en ligne',   // état réseau affiché dans le bandeau
   reseauClasse: '',
   alterneNfc: false,         // face « NFC actif » de l'alternance
@@ -46,7 +47,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 21;
+const VERSION_APP = 22;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -136,10 +137,9 @@ document.addEventListener('DOMContentLoaded', function () {
   brancher('NFC', brancherNfc);
   brancher('acquittement', brancherAcquittement);
   brancher('verrou', brancherVerrou);
-  brancher('association', brancherAssociation);
+  brancher('actions', brancherActions);
   brancher('démarrage', brancherDemarrage);
   brancher('historique', brancherHistorique);
-  brancher('signalement', brancherSignalement);
 
   brancher('intégrité', verifierIntegriteInterface);
   brancher('bandeau', lancerAlternanceBandeau);
@@ -287,8 +287,8 @@ function brancherDemarrage() {
 const ELEMENTS_REQUIS = [
   'pave', 'pave-libelle', 'pave-detail', 'pave-uid', 'identite', 'nom',
   'liste-historique', 'filtre-historique', 'compte-historique',
-  'signalement', 'btn-signaler', 'champ-signalement',
-  'btn-attribuer', 'btn-suspendre', 'btn-effacer',
+  'actions', 'btn-signaler', 'btn-attribuer', 'btn-suspendre', 'btn-effacer',
+  'confirmation', 'confirmation-titre', 'confirmation-champ', 'confirmation-valider',
   'filtre-ecole', 'filtre-statut', 'compte-resultats',
   'demarrage', 'demarrage-etat', 'stat-historique', 'stat-memoire'
 ];
@@ -851,7 +851,7 @@ function demarrerNfc() {
       // Une fiche ouverte ne détourne plus la lecture : il faut avoir cliqué
       // sur ATTRIBUER. Sinon, présenter un bracelet devant une fiche affichée
       // le réattribuerait par accident à la personne consultée.
-      else if (etat.association && etat.association.enAttente) attribuerBracelet(uid);
+      else if (etat.attribution && Confirmation.ouvert()) attribuerBracelet(uid);
       else traiterScan(uid);
     };
     /**
@@ -896,9 +896,12 @@ function traiterScan(uid) {
   // Un vrai scan referme le bloc d'attribution : sans cela, les boutons
   // resteraient à l'écran sous la décision et se rapporteraient encore à la
   // fiche consultée juste avant — donc à quelqu'un d'autre.
-  fermerAssociation();
+  // Un vrai scan referme toute confirmation en cours : ses boutons se
+  // rapporteraient encore à la fiche consultée juste avant, donc à quelqu'un
+  // d'autre.
+  if (Confirmation.ouvert()) Confirmation.fermer();
+  etat.attribution = null;
   etat.ficheCourante = null;
-  fermerSignalement();
 
   // ⚠️ Un écran bloquant fige la lecture, y compris pour un AUTRE bracelet.
   //
@@ -990,7 +993,7 @@ function afficherDecision(decision) {
   gererBlocage(decision);
   etat.ecranOccupe = true;
   majBoutonEffacer();
-  majBlocSignalement();
+  majActions();
 }
 
 /**
@@ -1043,12 +1046,13 @@ function reinitialiserEcran() {
   $('identite').className = '';
   $('alerte').className = '';
   $('repas').className = '';
-  fermerAssociation();
+  if (Confirmation.ouvert()) Confirmation.fermer();
+  etat.attribution = null;
   etat.ficheCourante = null;
   etat.derniereDecision = null;
   etat.ecranOccupe = false;
   majBoutonEffacer();
-  majBlocSignalement();
+  majActions();
 }
 
 /** Le bouton n'existe que s'il y a quelque chose à effacer. */
@@ -1424,11 +1428,9 @@ function afficherFiche(numero) {
   // Le guichet d'accueil enchaîne : on cherche la personne, on lui attribue son
   // bracelet dans la foulée. C'est un geste de plus sur un flux qui existe déjà,
   // pas une procédure séparée.
-  if (etat.peutAssocier) ouvrirAssociation(p);
-  else fermerAssociation();
   etat.ecranOccupe = true;
   majBoutonEffacer();
-  majBlocSignalement();
+  majActions();
 }
 
 /**
@@ -1476,110 +1478,247 @@ function braceletActif(numero) {
   return trouve;
 }
 
-function ouvrirAssociation(participant) {
-  etat.association = { participant: participant, enAttente: false };
-  $('association').className = 'visible';
-  majEtatAssociation('', '');
-  rafraichirBoutonsAssociation();
-}
+/* ─────────────────────── Panneau de confirmation ─────────────────────── */
 
 /**
- * Les deux boutons disent l'état du participant sans qu'on ait à le lire.
+ * Un seul mécanisme de confirmation pour les trois actions de la fiche.
  *
- * Un bouton grisé et cadenassé vaut mieux qu'un bouton absent : l'opérateur
- * voit que la fonction existe et comprend pourquoi elle ne s'applique pas —
- * un bouton qui disparaît, lui, passe pour une panne.
- */
-function rafraichirBoutonsAssociation() {
-  if (!etat.association) return;
-  const porte = braceletActif(etat.association.participant.numero);
-  const attribuer = $('btn-attribuer');
-  const suspendre = $('btn-suspendre');
-
-  if (etat.association.enAttente) {
-    attribuer.textContent = 'ANNULER';
-    attribuer.className = 'principal attente';
-  } else {
-    attribuer.textContent = porte ? 'ATTRIBUER UN NOUVEAU BRACELET'
-                                  : 'ATTRIBUER UN BRACELET';
-    attribuer.className = 'principal';
-  }
-
-  suspendre.textContent = 'SUSPENDRE ET INTERDIRE L\'ACCÈS';
-  suspendre.className = porte ? '' : 'inerte';
-  suspendre.disabled = !porte || etat.association.enAttente;
-}
-
-function fermerAssociation() {
-  etat.association = null;
-  $('association').className = '';
-}
-
-function majEtatAssociation(texte, niveau) {
-  $('assoc-etat').textContent = texte;
-  $('assoc-etat').className = niveau || '';
-}
-
-/** Démarre (ou arrête) l'attente d'un bracelet à attribuer. */
-function basculerAttente() {
-  if (!etat.association) return;
-  if (etat.association.enAttente) {
-    etat.association.enAttente = false;
-    majEtatAssociation('', '');
-    rafraichirBoutonsAssociation();
-    return;
-  }
-  // Sans Web NFC, il n'y a plus aucun moyen de saisir un bracelet : autant le
-  // dire tout de suite plutôt que de laisser attendre devant un écran muet.
-  if (!('NDEFReader' in window)) {
-    majEtatAssociation('Ce navigateur ne lit pas le NFC — utilisez un téléphone '
-      + 'Android sous Chrome pour attribuer un bracelet', 'erreur');
-    return;
-  }
-  etat.association.enAttente = true;
-  const porte = braceletActif(etat.association.participant.numero);
-  majEtatAssociation(porte
-    ? 'Approchez le nouveau bracelet — l\'ancien sera désactivé'
-    : 'Approchez le bracelet à attribuer', '');
-  rafraichirBoutonsAssociation();
-  if (!etat.lecteurNfc) demarrerNfc();
-}
-
-/**
- * Suspension du bracelet porté.
+ * Auparavant chacune avait sa grammaire : un bloc dépliant pour le signalement,
+ * un bouton qui se changeait en ANNULER pour l'attribution, une boîte système
+ * pour la suspension. Trois boutons, trois façons de confirmer, et une mise en
+ * page qui se décalait sous les doigts au moindre message.
  *
- * Confirmation exigée : l'action bloque la personne à TOUS les points de
- * contrôle, et une fausse manœuvre au guichet se paierait à l'entrée du site.
+ * Le panneau couvre l'écran — c'est ce qui empêche l'appui accidentel, la
+ * qualité qu'avait `confirm()` — sans en avoir le défaut : il ne fige ni
+ * l'application, ni la synchronisation, ni la lecture NFC.
+ *
+ * `ouvrir()` renvoie une promesse : la valeur saisie si l'on valide, `null` si
+ * l'on renonce. Le panneau reste ouvert pour les actions qui se poursuivent
+ * après la validation — l'attente d'un bracelet, notamment.
  */
-function suspendreBracelet() {
-  if (!etat.association) return;
-  const participant = etat.association.participant;
-  const porte = braceletActif(participant.numero);
-  if (!porte) return;
-  if (!confirm('Suspendre le bracelet de ' + participant.prenom + ' ' +
-               participant.nom + ' ?\n\nIl sera refusé à tous les points de ' +
-               'contrôle dès la synchronisation suivante.')) return;
+const Confirmation = (function () {
+  let resoudre = null;
+  let alaFermeture = null;
 
-  majEtatAssociation('Suspension en cours…', '');
-  API.post({ action: 'update_status', terminal: localStorage.getItem('api_terminal'),
-             uid: porte.uid, numero: participant.numero, statut: 'SUSPENDU' }, 20000)
-    .then(function () {
-      porte.statut = 'SUSPENDU';
-      majEtatAssociation('✓ Bracelet suspendu', 'succes');
-      if (navigator.vibrate) navigator.vibrate(60);
-      rafraichirBoutonsAssociation();
-    })
-    .catch(function (erreur) {
-      // Hors ligne, la suspension ne vaudrait que pour ce téléphone — c'est
-      // exactement l'inverse du but recherché.
-      majEtatAssociation('Échec : ' + erreur.message +
-                         ' — le bracelet reste ACTIF, prévenez le PC', 'erreur');
-      if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+  function elements() {
+    return {
+      panneau: $('confirmation'), titre: $('confirmation-titre'),
+      texte: $('confirmation-texte'), champ: $('confirmation-champ'),
+      note: $('confirmation-note'), etat: $('confirmation-etat'),
+      valider: $('confirmation-valider'), annuler: $('confirmation-annuler')
+    };
+  }
+
+  function ouvrir(options) {
+    const e = elements();
+    e.panneau.className = 'visible' + (options.danger ? ' danger' : '');
+    e.titre.textContent = options.titre || '';
+    e.texte.textContent = options.texte || '';
+    e.note.textContent = options.note || '';
+    e.etat.textContent = '';
+    e.etat.className = '';
+    e.champ.value = '';
+    e.champ.className = options.champ ? 'visible' : '';
+    if (options.champ) e.champ.placeholder = options.champ;
+    e.valider.textContent = options.valider || 'VALIDER';
+    e.valider.className = 'action' + (options.danger ? ' danger' : '');
+    e.valider.style.display = '';
+    e.valider.disabled = false;
+    e.annuler.textContent = 'ANNULER';
+
+    // Le champ ne prend PAS le focus : ouvrir le clavier virtuel masquerait la
+    // moitié du panneau, dont le bouton de validation.
+    return new Promise(function (r) { resoudre = r; });
+  }
+
+  /** Bascule en attente : plus rien à valider, seulement à renoncer. */
+  function attendre(texte) {
+    const e = elements();
+    e.etat.textContent = texte;
+    e.etat.className = 'attente';
+    e.champ.className = '';
+    e.valider.style.display = 'none';
+  }
+
+  function erreur(texte) {
+    const e = elements();
+    e.etat.textContent = texte;
+    e.etat.className = 'erreur';
+  }
+
+  function occupe(texte) {
+    const e = elements();
+    e.etat.textContent = texte;
+    e.etat.className = 'attente';
+    e.valider.disabled = true;
+  }
+
+  function fermer() {
+    $('confirmation').className = '';
+    resoudre = null;
+    // ⚠️ Appelé à CHAQUE fermeture, y compris par le fond ou par ANNULER en
+    // pleine attente. Sans ce rappel, une attribution abandonnée laissait son
+    // participant armé : le bracelet suivant présenté lui aurait été attribué,
+    // panneau fermé et sans que personne ne demande quoi que ce soit.
+    if (alaFermeture) alaFermeture();
+  }
+
+  function surFermeture(fonction) { alaFermeture = fonction; }
+
+  function ouvert() { return $('confirmation').className.indexOf('visible') !== -1; }
+
+  function brancher() {
+    $('confirmation-valider').addEventListener('click', function () {
+      if (!resoudre) return;
+      const valeur = $('confirmation-champ').className ? $('confirmation-champ').value : true;
+      const r = resoudre;
+      resoudre = null;
+      r(valeur);
     });
+    const renoncer = function () {
+      const r = resoudre;
+      fermer();
+      if (r) r(null);
+    };
+    $('confirmation-annuler').addEventListener('click', renoncer);
+    // Un appui hors de la boîte vaut renoncement — jamais validation.
+    $('confirmation').addEventListener('click', function (evenement) {
+      if (evenement.target === $('confirmation')) renoncer();
+    });
+  }
+
+  return { ouvrir, attendre, erreur, occupe, fermer, ouvert, brancher, surFermeture };
+})();
+
+/* ─────────────────────── Actions de la fiche ─────────────────────── */
+
+/**
+ * Les trois boutons, et leurs états.
+ *
+ * Un bouton n'est jamais retiré : il devient inerte, gris et cadenassé. Un
+ * bouton qui disparaît déplace tous les autres sous le doigt de l'opérateur et
+ * passe pour une panne ; un bouton cadenassé s'explique tout seul.
+ */
+function majActions() {
+  const p = participantAffiche();
+  const montrer = !!p && !etat.blocage;
+  $('actions').className = montrer ? 'visible' : '';
+  if (!montrer) return;
+
+  // SIGNALER — réservé au porteur d'une carte STAFF ou ADMIN.
+  $('btn-signaler').className = 'action' + (reglagesVerrouilles() ? ' inerte' : '');
+
+  // ATTRIBUER — réservé aux terminaux habilités (colonne `peut_associer`).
+  const porte = braceletActif(p.numero);
+  $('btn-attribuer').textContent = porte ? 'ATTRIBUER UN NOUVEAU BRACELET'
+                                         : 'ATTRIBUER UN BRACELET';
+  $('btn-attribuer').className = 'action' + (etat.peutAssocier ? '' : ' inerte');
+
+  // SUSPENDRE — sans objet tant que la personne n'a pas de bracelet actif.
+  $('btn-suspendre').className = 'action' + (porte ? ' danger' : ' inerte');
+}
+
+function participantAffiche() {
+  return etat.ficheCourante
+    || (etat.derniereDecision && etat.derniereDecision.participant)
+    || null;
+}
+
+/* ── 1. Signaler ── */
+
+/**
+ * ⚠️ Écrire n'est PAS lire. Le porteur de la carte consigne depuis n'importe
+ * quel poste ; il ne verra jamais ce que les autres ont écrit — la lecture des
+ * notes reste gouvernée par le `profil_donnees` du terminal, qui ne les sert
+ * qu'aux postes SECURITE et PC_ORGA.
+ */
+function signalerParticipant() {
+  const p = participantAffiche();
+  if (!p) return;
+  if (reglagesVerrouilles()) {
+    message('Présentez une carte STAFF pour signaler un participant.', 'erreur');
+    return;
+  }
+
+  Confirmation.ouvrir({
+    titre: 'SIGNALER ' + (p.prenom + ' ' + p.nom).toUpperCase(),
+    texte: 'La note sera signée de votre nom et horodatée. Elle s\'ajoute aux ' +
+           'précédentes, sans jamais les effacer.',
+    champ: 'Fait daté, situé, factuel — par exemple : a refusé le contrôle au ' +
+           'poste B à 15 h 10',
+    note: 'Communicable à la personne concernée sur simple demande. Des faits, ' +
+          'jamais un jugement.',
+    valider: 'ENREGISTRER LA NOTE'
+  }).then(function (texte) {
+    if (texte === null) return;
+    if (String(texte).trim().length < 5) {
+      Confirmation.erreur('Décrivez le fait en quelques mots.');
+      return;
+    }
+    Confirmation.occupe('Envoi…');
+    const carte = etat.deverrouillage;
+    return API.post({ action: 'ecrire_note', uid_carte: carte ? carte.uid : '',
+                      terminal: localStorage.getItem('api_terminal'),
+                      numero: p.numero, texte: String(texte).trim() }, 20000)
+      .then(function () {
+        Confirmation.fermer();
+        message('✓ Note enregistrée pour ' + p.prenom + ' ' + p.nom, 'succes');
+        if (navigator.vibrate) navigator.vibrate(60);
+      })
+      .catch(function (erreur) {
+        if (erreur.code === 'SESSION_EXPIREE' || erreur.code === 'ROLE_INSUFFISANT') {
+          ecrireDeverrouillage(null);
+          majActions();
+          Confirmation.fermer();
+          message('Votre carte n\'autorise pas cette action — représentez une carte STAFF.',
+                  'erreur');
+          return;
+        }
+        // Hors ligne, la note ne partirait nulle part. On ne la met PAS en
+        // file : une note remontée trois heures plus tard, sans que personne
+        // ne le sache, vaut moins qu'un échec annoncé tout de suite.
+        Confirmation.erreur('Échec : ' + erreur.message +
+                            ' — notez le cas sur papier et prévenez le PC');
+        if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+      });
+  });
+}
+
+/* ── 2. Attribuer ── */
+
+function ouvrirAttribution() {
+  const p = participantAffiche();
+  if (!p) return;
+  if (!etat.peutAssocier) {
+    message('Ce terminal n\'est pas habilité à attribuer des bracelets.', 'erreur');
+    return;
+  }
+  if (!('NDEFReader' in window)) {
+    message('Ce navigateur ne lit pas le NFC — utilisez un téléphone Android sous Chrome.',
+            'erreur');
+    return;
+  }
+
+  const porte = braceletActif(p.numero);
+  Confirmation.ouvrir({
+    titre: (porte ? 'NOUVEAU BRACELET POUR ' : 'ATTRIBUER UN BRACELET À ') +
+           (p.prenom + ' ' + p.nom).toUpperCase(),
+    texte: porte
+      ? 'L\'ancien bracelet sera désactivé : il sera refusé à tous les points ' +
+        'de contrôle dès la synchronisation suivante.'
+      : 'Le bracelet présenté sera lié à cette personne sur tous les points de ' +
+        'contrôle.',
+    valider: 'APPROCHER LE BRACELET'
+  }).then(function (reponse) {
+    if (reponse === null) { etat.attribution = null; return; }
+    etat.attribution = p;
+    Confirmation.attendre('Approchez le bracelet du dos du téléphone…');
+    if (!etat.lecteurNfc) demarrerNfc();
+  });
 }
 
 /**
- * Attribue un bracelet au participant affiché.
+ * Attribue le bracelet présenté au participant en attente.
  *
  * L'opération est autorisée par TERMINAL (colonne `peut_associer` de l'onglet
  * `Terminaux`), pas par personne connectée : un guichet traite des centaines de
@@ -1587,12 +1726,10 @@ function suspendreBracelet() {
  * serait inapplicable.
  */
 function attribuerBracelet(uid) {
-  if (!etat.association) return;
-  etat.association.enAttente = false;
-  rafraichirBoutonsAssociation();
-  const participant = etat.association.participant;
+  const participant = etat.attribution;
+  if (!participant) return;
   const propre = normaliserUid(uid);
-  if (!propre) { majEtatAssociation('UID vide', 'erreur'); return; }
+  if (!propre) { Confirmation.erreur('UID illisible — représentez le bracelet.'); return; }
 
   // Le bracelet est-il déjà attribué à quelqu'un d'autre ? On le dit AVANT
   // d'écrire : au guichet, deux personnes repartiraient avec le même bracelet.
@@ -1600,25 +1737,17 @@ function attribuerBracelet(uid) {
   if (existant && existant.numero && existant.numero !== participant.numero
       && existant.statut === 'ACTIF') {
     const autre = etat.base.participants.get(existant.numero);
-    majEtatAssociation('Bracelet déjà attribué à ' +
+    Confirmation.erreur('Bracelet déjà attribué à ' +
       (autre ? autre.prenom + ' ' + autre.nom : existant.numero) +
-      ' — prenez-en un autre', 'erreur');
+      ' — prenez-en un autre');
     if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
-    // On rouvre l'attente : l'opérateur va présenter un autre bracelet tout de
-    // suite, lui faire recliquer sur ATTRIBUER n'aurait aucun sens.
-    etat.association.enAttente = true;
-    rafraichirBoutonsAssociation();
-    return;
+    return;   // on reste en attente : le suivant sera lu sans reclic
   }
 
-  majEtatAssociation('Attribution en cours…', '');
+  Confirmation.occupe('Attribution en cours…');
   API.post({ action: 'update_status', terminal: localStorage.getItem('api_terminal'),
              uid: propre, numero: participant.numero, statut: 'ACTIF' }, 20000)
     .then(function (reponse) {
-      majEtatAssociation('✓ Bracelet attribué à ' + participant.prenom + ' ' +
-                         participant.nom, 'succes');
-      if (navigator.vibrate) navigator.vibrate(60);
-
       // On l'ajoute tout de suite en mémoire : le bracelet doit être reconnu
       // immédiatement, sans attendre la synchronisation suivante.
       etat.base.bracelets.set(propre,
@@ -1627,141 +1756,73 @@ function attribuerBracelet(uid) {
         const ancien = etat.base.bracelets.get(reponse.ancien_bracelet_neutralise);
         if (ancien) ancien.statut = 'PERDU';
       }
-
-      rafraichirBoutonsAssociation();
+      etat.attribution = null;
+      Confirmation.fermer();
+      message('✓ Bracelet attribué à ' + participant.prenom + ' ' + participant.nom,
+              'succes');
+      if (navigator.vibrate) navigator.vibrate(60);
       // Retour à la liste, FILTRES CONSERVÉS : l'opérateur enchaîne la personne
       // suivante de la file sans avoir à re-sélectionner son école.
-      setTimeout(function () {
-        const nom = participant.prenom + ' ' + participant.nom;
-        fermerAssociation();
-        montrerVue('vue-recherche');
-        $('champ-recherche').value = '';
-        relancerRecherche();
-        message('✓ Bracelet attribué à ' + nom, 'succes');
-      }, 1200);
+      reinitialiserEcran();
+      montrerVue('vue-recherche');
+      $('champ-recherche').value = '';
+      relancerRecherche();
     })
     .catch(function (erreur) {
       // Hors ligne, l'attribution est IMPOSSIBLE : elle doit être connue de
-      // tous les postes, pas seulement de ce téléphone. On le dit franchement
-      // plutôt que de laisser croire à un succès.
-      majEtatAssociation('Échec : ' + erreur.message +
-                         ' — réessayez, ou notez le cas sur papier', 'erreur');
+      // tous les postes, pas seulement de ce téléphone.
+      Confirmation.erreur('Échec : ' + erreur.message +
+                          ' — réessayez, ou notez le cas sur papier');
       if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
-      rafraichirBoutonsAssociation();
     });
 }
 
-function brancherAssociation() {
-  $('btn-attribuer').addEventListener('click', basculerAttente);
-  $('btn-suspendre').addEventListener('click', suspendreBracelet);
-}
+/* ── 3. Suspendre ── */
 
-/* ─────────────────────────── Signalement ─────────────────────────── */
-
-/**
- * Écrire une note de sécurité : pouvoir STAFF ou ADMIN, vérifié côté SERVEUR.
- *
- * Deux barrières, et elles ne font pas le même travail :
- *
- *   1. **La carte** ouvre l'écran. Tant qu'aucune carte n'a été présentée, le
- *      bouton n'existe pas : un bénévole à qui l'on confie un terminal ne peut
- *      pas écrire n'importe quoi sur n'importe qui.
- *   2. **La phrase de passe** authentifie l'écriture, via `admin_login`. Un UID
- *      NTAG se clone pour trente euros — la carte ne peut donc pas être le
- *      secret. C'est le principe n°6 du projet, appliqué ici tel quel.
- *
- * ⚠️ Écrire n'est PAS lire. Le porteur de la carte consigne depuis n'importe
- * quel poste, mais ne verra jamais ce que les autres ont écrit : la lecture des
- * notes reste gouvernée par le `profil_donnees` du terminal et n'est servie
- * qu'aux postes SECURITE et PC_ORGA. Cette asymétrie est délibérée — elle
- * encourage le signalement sans diffuser les appréciations.
- *
- * La note s'ajoute aux précédentes, jamais ne les écrase, et le serveur y
- * appose l'horodatage et le nom du porteur de la carte.
- */
-function majBlocSignalement() {
-  const p = etat.ficheCourante || (etat.derniereDecision && etat.derniereDecision.participant);
-  // `reglagesVerrouilles()` est faux tant qu'aucune carte n'est déclarée dans
-  // le classeur : sur une base sans compte, le signalement reste donc ouvert,
-  // exactement comme les réglages. C'est le même arbitrage de mise en service.
-  const montrer = !!p && !etat.blocage && !reglagesVerrouilles();
-  $('signalement').className = montrer ? 'visible' : '';
-  if (!montrer) fermerSignalement();
-}
-
-function ouvrirSignalement() {
-  $('signalement-saisie').className = 'visible';
-  $('btn-signaler').style.display = 'none';
-  $('signalement-etat').textContent = '';
-  $('signalement-etat').className = '';
-  $('champ-signalement').focus();
-}
-
-function fermerSignalement() {
-  $('signalement-saisie').className = '';
-  $('btn-signaler').style.display = '';
-  $('champ-signalement').value = '';
-}
-
-function participantSignale() {
-  return etat.ficheCourante
-    || (etat.derniereDecision && etat.derniereDecision.participant)
-    || null;
-}
-
-function envoyerSignalement() {
-  const p = participantSignale();
+function suspendreBracelet() {
+  const p = participantAffiche();
   if (!p) return;
-  const texte = $('champ-signalement').value.trim();
-  if (texte.length < 5) {
-    $('signalement-etat').textContent = 'Décrivez le fait en quelques mots.';
-    $('signalement-etat').className = 'erreur';
+  const porte = braceletActif(p.numero);
+  if (!porte) {
+    message('Cette personne n\'a aucun bracelet actif à suspendre.', 'erreur');
     return;
   }
 
-  $('signalement-etat').textContent = 'Envoi…';
-  $('signalement-etat').className = '';
-  $('btn-signalement-envoyer').disabled = true;
-
-  // La carte présentée fait foi : son UID accompagne la requête, et le serveur
-  // vérifie le rôle contre l'onglet `Comptes`. Pas de phrase de passe — écrire
-  // un fait constaté n'est pas une opération assez lourde pour en exiger une à
-  // chaque signalement, et une fonction pénible est une fonction inutilisée.
-  const carte = etat.deverrouillage;
-  API.post({ action: 'ecrire_note', uid_carte: carte ? carte.uid : '',
-             terminal: localStorage.getItem('api_terminal'),
-             numero: p.numero, texte: texte }, 20000)
-    .then(function () {
-      fermerSignalement();
-      $('signalement-etat').textContent = '✓ Note enregistrée pour ' + p.prenom + ' ' + p.nom;
-      $('signalement-etat').className = 'succes';
-      if (navigator.vibrate) navigator.vibrate(60);
-    })
-    .catch(function (erreur) {
-      // Carte révoquée dans le classeur depuis le déverrouillage : on referme
-      // plutôt que de laisser croire que le signalement reste possible.
-      if (erreur.code === 'SESSION_EXPIREE' || erreur.code === 'ROLE_INSUFFISANT') {
-        ecrireDeverrouillage(null);
-        majBlocSignalement();
-        message('Votre carte n\'autorise pas cette action — représentez une carte STAFF.',
-                'erreur');
-      } else {
-        // Hors ligne, la note ne partirait nulle part. On ne la met PAS en
-        // file : une note remontée trois heures plus tard, sans que personne
-        // ne le sache, vaut moins qu'un échec annoncé tout de suite.
-        $('signalement-etat').textContent = 'Échec : ' + erreur.message +
-          ' — notez le cas sur papier et prévenez le PC';
-        $('signalement-etat').className = 'erreur';
-      }
-      if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
-    })
-    .then(function () { $('btn-signalement-envoyer').disabled = false; });
+  Confirmation.ouvrir({
+    danger: true,
+    titre: 'SUSPENDRE ' + (p.prenom + ' ' + p.nom).toUpperCase(),
+    texte: 'Le bracelet sera refusé à TOUS les points de contrôle dès la ' +
+           'synchronisation suivante. L\'opération est réversible depuis le ' +
+           'classeur.',
+    valider: 'SUSPENDRE'
+  }).then(function (reponse) {
+    if (reponse === null) return;
+    Confirmation.occupe('Suspension en cours…');
+    return API.post({ action: 'update_status', terminal: localStorage.getItem('api_terminal'),
+                      uid: porte.uid, numero: p.numero, statut: 'SUSPENDU' }, 20000)
+      .then(function () {
+        porte.statut = 'SUSPENDU';
+        Confirmation.fermer();
+        message('✓ Bracelet suspendu — ' + p.prenom + ' ' + p.nom, 'succes');
+        if (navigator.vibrate) navigator.vibrate(60);
+        majActions();
+      })
+      .catch(function (erreur) {
+        // Hors ligne, la suspension ne vaudrait que pour ce téléphone — c'est
+        // exactement l'inverse du but recherché.
+        Confirmation.erreur('Échec : ' + erreur.message +
+                            ' — le bracelet reste ACTIF, prévenez le PC');
+        if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+      });
+  });
 }
 
-function brancherSignalement() {
-  $('btn-signaler').addEventListener('click', ouvrirSignalement);
-  $('btn-signalement-annuler').addEventListener('click', fermerSignalement);
-  $('btn-signalement-envoyer').addEventListener('click', envoyerSignalement);
+function brancherActions() {
+  Confirmation.brancher();
+  Confirmation.surFermeture(function () { etat.attribution = null; });
+  $('btn-signaler').addEventListener('click', signalerParticipant);
+  $('btn-attribuer').addEventListener('click', ouvrirAttribution);
+  $('btn-suspendre').addEventListener('click', suspendreBracelet);
 }
 
 /* ─────────────────────────── Photos ─────────────────────────── */
