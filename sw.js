@@ -31,7 +31,7 @@
  * d'appliquer d'anciennes règles d'accès — sans que personne ne s'en aperçoive.
  * C'est le même piège que le déploiement figé d'Apps Script, une couche plus bas.
  */
-const CACHE = 'archipiades-coque-v24';
+const CACHE = 'archipiades-coque-v25';
 
 const COQUE = [
   './',
@@ -40,7 +40,11 @@ const COQUE = [
   'db.js',
   'api.js',
   'app.js',
-  'manifest.json'
+  'manifest.json',
+  // La police fait partie de la coque : servie d'une autre génération, le nom
+  // de l'application s'afficherait dans une police de repli sans que rien ne
+  // le signale.
+  'btp.woff2'
 ];
 
 self.addEventListener('install', function (evenement) {
