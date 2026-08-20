@@ -31,6 +31,7 @@ const etat = {
   vueDemandee: null,         // vue visée avant interception par le verrou
   demarrage: false,          // écran de première mise en service affiché
   ecranOccupe: false,        // une décision ou une fiche est affichée
+  derniereDecision: null,    // décision affichée, pour savoir qui l'on signale
   filtres: { ecole: '', statut: '' }   // conservés d'une recherche à l'autre
 };
 
@@ -40,7 +41,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 11;
+const VERSION_APP = 12;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -132,6 +133,8 @@ document.addEventListener('DOMContentLoaded', function () {
   brancher('verrou', brancherVerrou);
   brancher('association', brancherAssociation);
   brancher('démarrage', brancherDemarrage);
+  brancher('historique', brancherHistorique);
+  brancher('signalement', brancherSignalement);
 
   chargerReglages();
   etat.deverrouillage = lireDeverrouillagePersiste();
@@ -582,7 +585,8 @@ function tenterDeverrouillage(uid) {
   }
 
   ecrireDeverrouillage({
-    nom: carte.nom, role: carte.role, expire: Date.now() + dureeDeverrouillageMs()
+    uid: carte.uid, nom: carte.nom, role: carte.role,
+    expire: Date.now() + dureeDeverrouillageMs()
   });
   $('pave-verrou').className = '';
   $('verrou-detail').textContent = 'Scannez un bracelet STAFF pour déverrouiller';
@@ -719,6 +723,8 @@ function traiterScan(uid) {
   // resteraient à l'écran sous la décision et se rapporteraient encore à la
   // fiche consultée juste avant — donc à quelqu'un d'autre.
   fermerAssociation();
+  etat.ficheCourante = null;
+  fermerSignalement();
 
   // Un écran bloquant doit être acquitté avant tout nouveau scan… sauf si l'on
   // présente un AUTRE bracelet : la file ne doit pas s'arrêter parce que
@@ -769,6 +775,7 @@ function lireVerrouillage() {
 /* ─────────────────────────── Affichage ─────────────────────────── */
 
 function afficherDecision(decision) {
+  etat.derniereDecision = decision;
   const inconnu = decision.etat === 'NON_RECONNU';
   afficherPave(decision.libelle, decision.detail, decision.couleur, false,
                inconnu ? decision.uid : '');
@@ -796,6 +803,7 @@ function afficherDecision(decision) {
   gererBlocage(decision);
   etat.ecranOccupe = true;
   majBoutonEffacer();
+  majBlocSignalement();
 }
 
 /**
@@ -848,8 +856,10 @@ function reinitialiserEcran() {
   $('repas').className = '';
   fermerAssociation();
   etat.ficheCourante = null;
+  etat.derniereDecision = null;
   etat.ecranOccupe = false;
   majBoutonEffacer();
+  majBlocSignalement();
 }
 
 /** Le bouton n'existe que s'il y a quelque chose à effacer. */
@@ -859,6 +869,8 @@ function majBoutonEffacer() {
   const montrer = etat.ecranOccupe && !etat.blocage;
   $('btn-effacer').className = montrer ? 'visible' : '';
 }
+
+/** Un vrai scan efface la fiche consultée : le signalement suit la personne. */
 
 function afficherPhoto(numero) {
   const img = $('photo');
@@ -993,6 +1005,95 @@ function brancherAcquittement() {
   $('btn-effacer').addEventListener('click', reinitialiserEcran);
 }
 
+/* ─────────────────────────── Historique local ─────────────────────────── */
+
+/**
+ * Journal des passages de CE terminal, consultable sans aucun privilège.
+ *
+ * Le besoin est concret : on laisse passer quelqu'un, et c'est deux minutes
+ * plus tard qu'on réalise qu'il fallait le signaler. Sans historique, il faut
+ * retrouver son nom de mémoire dans la recherche — laquelle est verrouillée —
+ * ou aller dans le classeur. Autant dire que le signalement ne se fera pas.
+ *
+ * Pas de verrou par carte, délibérément : ce sont les gens que l'agent vient de
+ * voir passer devant lui, l'écran ne lui apprend rien qu'il ne sache déjà. Et
+ * un signalement qui exige d'aller chercher un chef de poste est un signalement
+ * perdu.
+ */
+const MAX_HISTORIQUE = 100;
+
+/** Couleur de l'état, reprise du moteur pour rester cohérente avec le pavé. */
+function couleurEtat(nomEtat) {
+  const couleurs = (typeof COULEURS !== 'undefined') ? COULEURS : {};
+  return couleurs[nomEtat] || 'neutre';
+}
+
+function brancherHistorique() {
+  let minuteur = null;
+  $('filtre-historique').addEventListener('input', function () {
+    clearTimeout(minuteur);
+    minuteur = setTimeout(afficherHistorique, 120);
+  });
+}
+
+function afficherHistorique() {
+  const terme = DB.normaliserTexte($('filtre-historique').value);
+
+  return DB.scansRecents(24 * 3600 * 1000).then(function (scans) {
+    const retenus = [];
+    for (let i = 0; i < scans.length && retenus.length < MAX_HISTORIQUE; i++) {
+      const scan = scans[i];
+      const p = scan.numero ? etat.base.participants.get(scan.numero) : null;
+      if (terme) {
+        const champs = DB.normaliserTexte(
+          [(p && p.nom) || '', (p && p.prenom) || '', scan.numero || '', scan.uid || ''].join(' '));
+        if (champs.indexOf(terme) === -1) continue;
+      }
+      retenus.push({ scan: scan, participant: p });
+    }
+
+    $('compte-historique').textContent = retenus.length
+      ? retenus.length + (retenus.length > 1 ? ' passages' : ' passage')
+        + (scans.length > retenus.length ? ' sur ' + scans.length : '')
+      : '';
+
+    if (!retenus.length) {
+      $('liste-historique').innerHTML = scans.length
+        ? '<div class="note">Aucun passage ne correspond.</div>'
+        : '<div class="note">Aucun passage enregistré sur ce poste.</div>';
+      return;
+    }
+
+    $('liste-historique').innerHTML = retenus.map(function (entree) {
+      const scan = entree.scan;
+      const p = entree.participant;
+      const nom = p ? (p.nom + ' ' + p.prenom) : ('Bracelet ' + (scan.uid || '?'));
+      const libelle = (typeof LIBELLES !== 'undefined' && LIBELLES[scan.decision])
+        ? LIBELLES[scan.decision] : String(scan.decision || '');
+      return '<div class="entree-historique" data-numero="' + echapper(scan.numero || '') + '">' +
+             '<div class="heure">' + echapper(heureCourte(scan.ts_terminal)) + '</div>' +
+             '<div class="corps"><div class="nom">' + echapper(nom) + '</div>' +
+             '<div class="decision ' + couleurEtat(scan.decision) + '">' +
+             echapper(libelle) + '</div></div></div>';
+    }).join('');
+
+    Array.prototype.forEach.call($('liste-historique').children, function (element) {
+      element.addEventListener('click', function () {
+        const numero = element.dataset.numero;
+        // Un bracelet jamais attribué n'a pas de fiche à ouvrir : il n'y a
+        // personne à signaler, seulement une puce inconnue.
+        if (!numero) { message('Ce bracelet n\'est rattaché à aucun participant.'); return; }
+        afficherFiche(numero);
+      });
+    });
+  });
+}
+
+function heureCourte(horodatage) {
+  const d = new Date(horodatage);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+
 /* ─────────────────────────── Recherche ─────────────────────────── */
 
 /** Plafond d'affichage : au-delà, on annonce le total sans tout dessiner. */
@@ -1116,6 +1217,7 @@ function afficherFiche(numero) {
   else fermerAssociation();
   etat.ecranOccupe = true;
   majBoutonEffacer();
+  majBlocSignalement();
 }
 
 /* ─────────────────────── Attribution de bracelet ─────────────────────── */
@@ -1309,6 +1411,114 @@ function brancherAssociation() {
   $('btn-suspendre').addEventListener('click', suspendreBracelet);
 }
 
+/* ─────────────────────────── Signalement ─────────────────────────── */
+
+/**
+ * Écrire une note de sécurité : pouvoir STAFF ou ADMIN, vérifié côté SERVEUR.
+ *
+ * Deux barrières, et elles ne font pas le même travail :
+ *
+ *   1. **La carte** ouvre l'écran. Tant qu'aucune carte n'a été présentée, le
+ *      bouton n'existe pas : un bénévole à qui l'on confie un terminal ne peut
+ *      pas écrire n'importe quoi sur n'importe qui.
+ *   2. **La phrase de passe** authentifie l'écriture, via `admin_login`. Un UID
+ *      NTAG se clone pour trente euros — la carte ne peut donc pas être le
+ *      secret. C'est le principe n°6 du projet, appliqué ici tel quel.
+ *
+ * ⚠️ Écrire n'est PAS lire. Le porteur de la carte consigne depuis n'importe
+ * quel poste, mais ne verra jamais ce que les autres ont écrit : la lecture des
+ * notes reste gouvernée par le `profil_donnees` du terminal et n'est servie
+ * qu'aux postes SECURITE et PC_ORGA. Cette asymétrie est délibérée — elle
+ * encourage le signalement sans diffuser les appréciations.
+ *
+ * La note s'ajoute aux précédentes, jamais ne les écrase, et le serveur y
+ * appose l'horodatage et le nom du porteur de la carte.
+ */
+function majBlocSignalement() {
+  const p = etat.ficheCourante || (etat.derniereDecision && etat.derniereDecision.participant);
+  // `reglagesVerrouilles()` est faux tant qu'aucune carte n'est déclarée dans
+  // le classeur : sur une base sans compte, le signalement reste donc ouvert,
+  // exactement comme les réglages. C'est le même arbitrage de mise en service.
+  const montrer = !!p && !etat.blocage && !reglagesVerrouilles();
+  $('signalement').className = montrer ? 'visible' : '';
+  if (!montrer) fermerSignalement();
+}
+
+function ouvrirSignalement() {
+  $('signalement-saisie').className = 'visible';
+  $('btn-signaler').style.display = 'none';
+  $('signalement-etat').textContent = '';
+  $('signalement-etat').className = '';
+  $('champ-signalement').focus();
+}
+
+function fermerSignalement() {
+  $('signalement-saisie').className = '';
+  $('btn-signaler').style.display = '';
+  $('champ-signalement').value = '';
+}
+
+function participantSignale() {
+  return etat.ficheCourante
+    || (etat.derniereDecision && etat.derniereDecision.participant)
+    || null;
+}
+
+function envoyerSignalement() {
+  const p = participantSignale();
+  if (!p) return;
+  const texte = $('champ-signalement').value.trim();
+  if (texte.length < 5) {
+    $('signalement-etat').textContent = 'Décrivez le fait en quelques mots.';
+    $('signalement-etat').className = 'erreur';
+    return;
+  }
+
+  $('signalement-etat').textContent = 'Envoi…';
+  $('signalement-etat').className = '';
+  $('btn-signalement-envoyer').disabled = true;
+
+  // La carte présentée fait foi : son UID accompagne la requête, et le serveur
+  // vérifie le rôle contre l'onglet `Comptes`. Pas de phrase de passe — écrire
+  // un fait constaté n'est pas une opération assez lourde pour en exiger une à
+  // chaque signalement, et une fonction pénible est une fonction inutilisée.
+  const carte = etat.deverrouillage;
+  API.post({ action: 'ecrire_note', uid_carte: carte ? carte.uid : '',
+             terminal: localStorage.getItem('api_terminal'),
+             numero: p.numero, texte: texte }, 20000)
+    .then(function () {
+      fermerSignalement();
+      $('signalement-etat').textContent = '✓ Note enregistrée pour ' + p.prenom + ' ' + p.nom;
+      $('signalement-etat').className = 'succes';
+      if (navigator.vibrate) navigator.vibrate(60);
+    })
+    .catch(function (erreur) {
+      // Carte révoquée dans le classeur depuis le déverrouillage : on referme
+      // plutôt que de laisser croire que le signalement reste possible.
+      if (erreur.code === 'SESSION_EXPIREE' || erreur.code === 'ROLE_INSUFFISANT') {
+        ecrireDeverrouillage(null);
+        majBlocSignalement();
+        message('Votre carte n\'autorise pas cette action — représentez une carte STAFF.',
+                'erreur');
+      } else {
+        // Hors ligne, la note ne partirait nulle part. On ne la met PAS en
+        // file : une note remontée trois heures plus tard, sans que personne
+        // ne le sache, vaut moins qu'un échec annoncé tout de suite.
+        $('signalement-etat').textContent = 'Échec : ' + erreur.message +
+          ' — notez le cas sur papier et prévenez le PC';
+        $('signalement-etat').className = 'erreur';
+      }
+      if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+    })
+    .then(function () { $('btn-signalement-envoyer').disabled = false; });
+}
+
+function brancherSignalement() {
+  $('btn-signaler').addEventListener('click', ouvrirSignalement);
+  $('btn-signalement-annuler').addEventListener('click', fermerSignalement);
+  $('btn-signalement-envoyer').addEventListener('click', envoyerSignalement);
+}
+
 /* ─────────────────────────── Photos ─────────────────────────── */
 
 /**
@@ -1457,6 +1667,8 @@ function montrerVue(identifiant) {
     remplirFiltres();
     relancerRecherche();
   }
+  // L'historique n'est PAS dans VUES_RESERVEES : il s'ouvre sans carte.
+  if (identifiant === 'vue-historique') afficherHistorique();
 }
 
 function rafraichirBandeau() {

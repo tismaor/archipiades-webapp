@@ -19,7 +19,7 @@
  * d'appliquer d'anciennes règles d'accès — sans que personne ne s'en aperçoive.
  * C'est le même piège que le déploiement figé d'Apps Script, une couche plus bas.
  */
-const CACHE = 'archipiades-coque-v11';
+const CACHE = 'archipiades-coque-v12';
 
 const COQUE = [
   './',

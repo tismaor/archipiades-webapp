@@ -27,7 +27,20 @@ const DB_NOM = 'archipiades';
 const DB_VERSION = 2;
 
 /** Durée de conservation de l'historique local, en millisecondes. */
-const HISTORIQUE_DUREE_MS = 6 * 3600 * 1000;
+/**
+ * Rétention de l'historique local.
+ *
+ * 18 h couvre une journée d'événement entière, du montage au démontage. C'est
+ * bien plus que l'anti-passback n'en a besoin (une heure), mais l'historique
+ * sert aussi à retrouver quelqu'un qui est passé le matin pour lui adjoindre un
+ * signalement l'après-midi.
+ *
+ * Le coût est négligeable : une ligne de scan pèse environ 150 octets, donc
+ * 3 000 passages tiennent dans un demi-mégaoctet. Et cela n'expose rien de plus
+ * — l'appareil détient déjà la base complète des participants, noms et photos
+ * compris ; un scan ne contient qu'un UID et un numéro.
+ */
+const HISTORIQUE_DUREE_MS = 18 * 3600 * 1000;
 
 let _db = null;
 
@@ -385,7 +398,7 @@ function statistiques() {
 
 window.DB = {
   ouvrirDb, appliquerDelta, lireCurseur, ecrireCurseur, lireMeta, ecrireMeta,
-  chargerBase, rechercher, valeursDistinctes, lirePhoto, ecrirePhoto, compterPhotos,
+  chargerBase, rechercher, valeursDistinctes, normaliserTexte, lirePhoto, ecrirePhoto, compterPhotos,
   empilerScan, lireFileScans, retirerScans, compterFileScans, scansRecents,
   purgerHistorique, viderHistorique,
   purgerBase, statistiques

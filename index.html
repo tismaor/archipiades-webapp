@@ -159,7 +159,7 @@ nav {
 }
 nav button {
   flex: 1; margin: 0; border: none; border-right: 1px solid var(--gris-sombre);
-  padding: 14px 4px; font-size: 12px; color: var(--gris);
+  padding: 14px 2px; font-size: 11px; color: var(--gris);
 }
 nav button:last-child { border-right: none; }
 nav button.actif { color: var(--texte); border-top: 2px solid var(--texte); }
@@ -224,6 +224,38 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
    effacer, sans quoi on se croit bloqué sur la dernière personne scannée. */
 #btn-effacer { display: none; color: var(--gris); }
 #btn-effacer.visible { display: block; }
+
+/* ── Historique local ─────────────────────────────────────────────────── */
+#compte-historique { font-size: 12px; color: var(--gris); margin: 12px 0; }
+.entree-historique {
+  border-bottom: 1px solid var(--gris-sombre); padding: 10px 2px; cursor: pointer;
+  display: flex; gap: 10px; align-items: baseline;
+}
+.entree-historique .heure { font-size: 13px; color: var(--gris); flex: 0 0 auto; }
+.entree-historique .corps { flex: 1; min-width: 0; }
+.entree-historique .nom { font-size: 15px; font-weight: 700; }
+/* La décision garde sa couleur : c'est l'information, et elle doit se retrouver
+   d'un coup d'œil dans une liste de cent lignes. */
+.entree-historique .decision { font-size: 12px; margin-top: 2px; }
+.entree-historique .decision.vert { color: var(--vert); }
+.entree-historique .decision.rouge { color: var(--rouge); }
+.entree-historique .decision.orange { color: var(--orange); }
+.entree-historique .decision.neutre { color: var(--gris); }
+
+/* ── Signalement ──────────────────────────────────────────────────────── */
+#signalement { display: none; margin-top: 16px; }
+#signalement.visible { display: block; }
+#btn-signaler { color: var(--gris); }
+#signalement-saisie { display: none; }
+#signalement-saisie.visible { display: block; }
+#champ-signalement {
+  width: 100%; background: var(--fond); color: var(--texte);
+  border: 1px solid var(--gris); padding: 10px; font: inherit; font-size: 15px;
+  resize: vertical;
+}
+#signalement-etat { font-size: 14px; margin-top: 8px; }
+#signalement-etat.succes { color: var(--vert); font-weight: 700; }
+#signalement-etat.erreur { color: var(--orange); }
 
 /* ── Écran de démarrage ────────────────────────────────────────────────── */
 #demarrage {
@@ -345,6 +377,22 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
       <button id="btn-suspendre">SUSPENDRE LE BRACELET</button>
     </div>
 
+    <div id="signalement">
+      <button id="btn-signaler">✎ SIGNALER CE PARTICIPANT</button>
+      <div id="signalement-saisie">
+        <label for="champ-signalement">Fait constaté — daté, situé, factuel</label>
+        <textarea id="champ-signalement" rows="3" maxlength="300"
+                  placeholder="A refusé le contrôle et insulté l'agent."></textarea>
+        <div class="note">
+          Communicable à la personne concernée sur simple demande. Des faits,
+          jamais un jugement. La note sera signée de votre nom et horodatée.
+        </div>
+        <button class="principal" id="btn-signalement-envoyer">ENVOYER LA NOTE</button>
+        <button id="btn-signalement-annuler">ANNULER</button>
+      </div>
+      <div id="signalement-etat"></div>
+    </div>
+
     <div id="repas">
       <div class="titre">Régime</div>
       <div class="regime" id="regime">—</div>
@@ -381,6 +429,14 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
     <div id="compte-resultats"></div>
     <div id="resultats"></div>
+  </section>
+
+  <!-- ── Vue historique ───────────────────────────────────────────────── -->
+  <section id="vue-historique" class="vue">
+    <input id="filtre-historique" type="search" placeholder="Filtrer par nom ou numéro…"
+           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <div id="compte-historique"></div>
+    <div id="liste-historique"></div>
   </section>
 
   <!-- ── Verrou des réglages ──────────────────────────────────────────── -->
@@ -441,6 +497,7 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
 
 <nav>
   <button data-vue="vue-scan" class="actif">SCAN</button>
+  <button data-vue="vue-historique">HISTORIQUE</button>
   <button data-vue="vue-recherche">RECHERCHE</button>
   <button data-vue="vue-reglages">RÉGLAGES</button>
 </nav>
