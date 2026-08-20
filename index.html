@@ -229,18 +229,17 @@ button.action.discret { border-color: var(--gris); color: var(--gris); }
   font-size: 17px; font-weight: 700; line-height: 1.3; margin-bottom: 12px;
 }
 #confirmation.danger #confirmation-titre { color: var(--rouge); }
-#confirmation-texte { font-size: 15px; line-height: 1.45; }
-#confirmation-texte:empty { display: none; }
 #confirmation-champ {
   display: none; width: 100%; margin-top: 14px; padding: 12px;
   background: var(--fond); color: var(--texte); border: 1px solid var(--gris);
   font-family: inherit; font-size: 16px; resize: vertical;
 }
 #confirmation-champ.visible { display: block; }
-/* Mention légale sous la zone de saisie : petite et grise, elle informe sans
-   concurrencer ce qu'il y a à écrire. */
-#confirmation-note { display: none; font-size: 12px; color: var(--gris); }
-#confirmation-note:not(:empty) { display: block; margin-top: 10px; line-height: 1.5; }
+/* Le texte explicatif du panneau prend la mise en forme commune à tous les
+   sous-textes de l'application — classe `.note`, rien de plus. Il informe sans
+   concurrencer le titre, qui porte déjà la gravité de l'action. */
+#confirmation-note { display: none; }
+#confirmation-note:not(:empty) { display: block; }
 #confirmation-etat { display: none; font-size: 14px; margin-top: 12px; }
 #confirmation-etat:not(:empty) { display: block; }
 #confirmation-etat.erreur { color: var(--orange); }
@@ -396,7 +395,7 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bottom: 8px; font-weight: 400; }
 </style>
 </head>
-<body data-coque="23">
+<body data-coque="24">
 
 <div id="panne"></div>
 
@@ -433,7 +432,6 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
 <div id="confirmation">
   <div id="confirmation-boite">
     <div id="confirmation-titre"></div>
-    <div id="confirmation-texte"></div>
     <textarea id="confirmation-champ" rows="4" maxlength="300"></textarea>
     <div id="confirmation-note" class="note"></div>
     <div id="confirmation-etat"></div>
@@ -566,9 +564,9 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
     <input id="champ-cle" type="text" autocomplete="off">
     <label for="champ-terminal">Identifiant du terminal</label>
     <input id="champ-terminal" type="text" autocomplete="off" placeholder="WEB-01">
-    <button class="action" id="btn-enregistrer">ENREGISTRER ET SYNCHRONISER</button>
+    <button class="action" id="btn-enregistrer">ENREGISTRER LES INFORMATIONS</button>
 
-    <button class="action" id="btn-sync">SYNCHRONISER MAINTENANT</button>
+    <button class="action" id="btn-sync">SYNCHRONISER LA BASE</button>
 
     <button class="action" id="btn-photos">PRÉCHARGER LES PHOTOS</button>
     <div class="note">

@@ -47,7 +47,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 23;
+const VERSION_APP = 24;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -1519,7 +1519,7 @@ const Confirmation = (function () {
   function elements() {
     return {
       panneau: $('confirmation'), titre: $('confirmation-titre'),
-      texte: $('confirmation-texte'), champ: $('confirmation-champ'),
+      champ: $('confirmation-champ'),
       note: $('confirmation-note'), etat: $('confirmation-etat'),
       valider: $('confirmation-valider'), annuler: $('confirmation-annuler')
     };
@@ -1529,7 +1529,6 @@ const Confirmation = (function () {
     const e = elements();
     e.panneau.className = 'visible' + (options.danger ? ' danger' : '');
     e.titre.textContent = options.titre || '';
-    e.texte.textContent = options.texte || '';
     e.note.textContent = options.note || '';
     e.etat.textContent = '';
     e.etat.className = '';
@@ -1717,7 +1716,7 @@ function ouvrirAttribution() {
   Confirmation.ouvrir({
     titre: (porte ? 'NOUVEAU BRACELET POUR ' : 'ATTRIBUER UN BRACELET À ') +
            (p.prenom + ' ' + p.nom).toUpperCase(),
-    texte: porte
+    note: porte
       ? 'L\'ancien bracelet sera désactivé : il sera refusé à tous les points ' +
         'de contrôle dès la synchronisation suivante.'
       : 'Le bracelet présenté sera lié à cette personne sur tous les points de ' +
@@ -1805,9 +1804,9 @@ function suspendreBracelet() {
   Confirmation.ouvrir({
     danger: true,
     titre: 'SUSPENDRE ' + (p.prenom + ' ' + p.nom).toUpperCase(),
-    texte: 'Le bracelet sera refusé à TOUS les points de contrôle dès la ' +
-           'synchronisation suivante. L\'opération est réversible depuis le ' +
-           'classeur.',
+    note: 'Le bracelet sera refusé à TOUS les points de contrôle dès la ' +
+          'synchronisation suivante. L\'opération est réversible depuis le ' +
+          'classeur.',
     valider: 'SUSPENDRE'
   }).then(function (reponse) {
     if (reponse === null) return;
