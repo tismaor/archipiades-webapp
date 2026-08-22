@@ -47,7 +47,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 25;
+const VERSION_APP = 26;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
