@@ -57,7 +57,10 @@ const LIBELLES = {
   [ETATS.ZONE]:         'ACCÈS REFUSÉ — ZONE NON AUTORISÉE',
   [ETATS.PASSBACK]:     'PASSBACK SUSPECTÉ — CONTRÔLE RENFORCÉ REQUIS',
   [ETATS.VERROUILLE]:   'POSTE VERROUILLÉ',
-  [ETATS.REPAS_SERVI]:  'REPAS SERVI',
+  // Une consigne, pas un constat : au point repas la seule question est
+  // « je sers ou pas ? », et « servi » au passé se confondait avec « déjà
+  // consommé ». Le CODE reste REPAS_SERVI — c'est lui que le serveur compte.
+  [ETATS.REPAS_SERVI]:  'REPAS À SERVIR',
   [ETATS.REPAS_DEJA]:   'REPAS DÉJÀ CONSOMMÉ',
   [ETATS.REPAS_HORS]:   'HORS SERVICE',
   [ETATS.REPAS_NON_DU]: 'REPAS NON INCLUS DANS LA FORMULE'
