@@ -79,7 +79,13 @@ const API = (function () {
    */
   function estTransitoire(erreur) {
     if (erreur.code) return false;          // erreur métier renvoyée par le backend
-    return /non JSON|Réponse vide|Délai dépassé|Failed to fetch|NetworkError/i
+    // ⚠️ Un délai dépassé ne se relance PAS tout de suite. La requête abandonnée
+    // continue de s'exécuter chez Google et garde sa place dans sa file : la
+    // relance se range derrière, expire à son tour, et chaque page ratée
+    // empilait trois exécutions. Quand le service ralentit, c'est ce qui le
+    // fait s'écrouler — un premier chargement ne passait plus du tout. Le
+    // firmware applique la même règle ; la sync suivante réessaiera.
+    return /non JSON|Réponse vide|Failed to fetch|NetworkError/i
       .test(erreur.message || '');
   }
 
@@ -164,7 +170,7 @@ const API = (function () {
       apres: apres || '',
       refs: refsVersion || '',
       limite: limite || 500
-    }, 20000);
+    }, 30000);   // une page de 500 fiches dépasse 20 s quand Google ralentit
   }
 
   /** Envoie un lot de scans. Idempotent par `scan_id` côté serveur. */
