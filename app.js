@@ -47,7 +47,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 27;
+const VERSION_APP = 28;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -839,9 +839,39 @@ function brancherNfc() {
   if (!('NDEFReader' in window)) {
     $('btn-nfc').style.display = 'none';
     $('nfc-indispo').style.display = 'block';
+    $('nfc-indispo-navigateur').textContent = navigateurSansNfc();
     return;
   }
   $('btn-nfc').addEventListener('click', demarrerNfc);
+}
+
+/**
+ * Nomme le navigateur qui n'a pas Web NFC.
+ *
+ * ⚠️ Sur Android, « pas de NFC » veut presque toujours dire « pas dans
+ * Chrome » : le lien a été ouvert par le lecteur de QR code dans Samsung
+ * Internet, ou dans le navigateur intégré d'une application (Google, Lens,
+ * messagerie). Ces navigateurs ont leur propre stockage : on y retrouve une
+ * ancienne configuration, sans écran de chargement, alors qu'on vient
+ * d'effacer les données de Chrome — et l'on cherche la panne au mauvais
+ * endroit. Le NFC désactivé dans les réglages du téléphone, lui, ne fait PAS
+ * disparaître `NDEFReader` : il fait échouer la lecture, plus tard.
+ */
+function navigateurSansNfc() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad/.test(ua)) return 'Détecté : iPhone / iPad (Web NFC n\'y existe pas).';
+  if (/SamsungBrowser/.test(ua)) return 'Détecté : Samsung Internet. Ouvrez le lien dans Chrome.';
+  if (/Firefox/.test(ua)) return 'Détecté : Firefox. Ouvrez le lien dans Chrome.';
+  if (/EdgA/.test(ua)) return 'Détecté : Edge. Ouvrez le lien dans Chrome.';
+  if (/OPR|Opera/.test(ua)) return 'Détecté : Opera. Ouvrez le lien dans Chrome.';
+  if (/; wv\)|GSA\/|FBAV|Instagram|WhatsApp/.test(ua)) {
+    return 'Détecté : navigateur intégré à une application (lecteur de QR code, Google, messagerie). ' +
+           'Menu ⋮ > « Ouvrir dans Chrome ».';
+  }
+  if (!window.isSecureContext) return 'Détecté : page non sécurisée (http). Ouvrez l\'adresse en https.';
+  const version = (ua.match(/Chrome\/(\d+)/) || [])[1];
+  if (version && Number(version) < 89) return 'Détecté : Chrome ' + version + ', trop ancien. Mettez Chrome à jour.';
+  return 'Navigateur : ' + ua;
 }
 
 function demarrerNfc() {
