@@ -47,7 +47,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 29;
+const VERSION_APP = 30;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -541,12 +541,25 @@ function synchroniser(manuelle) {
     .catch(function (erreur) {
       definirEtatReseau('échec sync', 'alerte-reseau');
       echecEcranDemarrage(erreur.message);
+      if (etat.demarrage && !erreur.code) {
+        // Premier chargement : chaque page reçue est déjà enregistrée, on
+        // reprend là où l'on s'est arrêté, sans attendre la cadence normale.
+        // Mesuré : l'exécution chez Google prend 3 à 12 s, c'est la lecture
+        // du résultat (script.googleusercontent.com) qui s'éternise, 25 à
+        // 94 s ou un 404, une fois sur deux. Une requête qui attend son
+        // résultat n'occupe plus rien : un nouvel essai retente sa chance.
+        $('demarrage-compteur').textContent = recues
+          ? recues.toLocaleString('fr-FR') + ' fiches reçues — reprise automatique…'
+          : erreur.message + ' — reprise automatique…';
+        etat.repriseDemarrage = true;
+      }
       if (manuelle) message('Synchronisation impossible : ' + erreur.message, 'erreur');
       console.warn('sync : ' + erreur.message);
     })
     .then(function () {
       etat.syncEnCours = false;
-      planifierSync();
+      planifierSync(etat.repriseDemarrage ? 3000 : undefined);
+      etat.repriseDemarrage = false;
       return rafraichirBandeau();
     });
 }
