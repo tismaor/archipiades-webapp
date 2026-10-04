@@ -31,7 +31,7 @@
  * d'appliquer d'anciennes règles d'accès — sans que personne ne s'en aperçoive.
  * C'est le même piège que le déploiement figé d'Apps Script, une couche plus bas.
  */
-const CACHE = 'archipiades-coque-v30';
+const CACHE = 'archipiades-coque-v31';
 
 const COQUE = [
   './',
@@ -41,10 +41,17 @@ const COQUE = [
   'api.js',
   'app.js',
   'manifest.json',
-  // La police fait partie de la coque : servie d'une autre génération, le nom
-  // de l'application s'afficherait dans une police de repli sans que rien ne
-  // le signale.
-  'btp.woff2'
+  // Les polices font partie de la coque : servies d'une autre génération — ou
+  // pas servies du tout, hors ligne — l'interface s'afficherait dans une
+  // police de repli sans que rien ne le signale.
+  // ⚠️ Tout fichier listé ici DOIT être publié : `cache.addAll` échoue en bloc
+  // sur un seul 404, le nouveau Service Worker ne s'installe jamais, et les
+  // téléphones restent sur l'ancienne coque. `deployer_webapp.sh` le vérifie.
+  'btp.woff2',
+  'oswald.woff2',
+  'lato-400.woff2',
+  'lato-700.woff2',
+  'lato-900.woff2'
 ];
 
 self.addEventListener('install', function (evenement) {

@@ -47,7 +47,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 30;
+const VERSION_APP = 31;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -112,7 +112,7 @@ window.addEventListener('unhandledrejection', function (evenement) {
 function signalerPanne(texte) {
   const zone = document.getElementById('panne');
   if (!zone) return;
-  zone.textContent = '⚠ Erreur : ' + texte + ' — signalez-le au PC.';
+  zone.textContent = 'Erreur : ' + texte + ' — signale-le au PC.';
   zone.className = 'visible';
   console.error(texte);
 }
@@ -153,7 +153,7 @@ document.addEventListener('DOMContentLoaded', function () {
     .then(function () {
       if (!API.estConfigure()) {
         montrerVue('vue-reglages');
-        afficherPave('CONFIGURATION REQUISE', 'Renseignez l\'URL et la clé API', null, true);
+        afficherPave('CONFIGURATION REQUISE', 'Renseigne l\'URL et la clé API', null, true);
         return;
       }
       envoyerFileScans();
@@ -305,8 +305,8 @@ function verifierIntegriteInterface() {
   const coque = parseInt(document.body.dataset.coque, 10);
   if (coque && coque !== VERSION_APP) {
     signalerPanne('VERSION INCOHÉRENTE — page v' + coque + ' contre programme v' +
-      VERSION_APP + '. Fermez complètement l\'application et rouvrez-la ; ' +
-      'si cela persiste, videz les données du site.');
+      VERSION_APP + '. Ferme complètement l\'application et rouvre-la ; ' +
+      'si cela persiste, vide les données du site.');
     return false;
   }
 
@@ -314,8 +314,8 @@ function verifierIntegriteInterface() {
   if (!absents.length) return true;
   signalerPanne('VERSION INCOHÉRENTE — le HTML affiché est plus ancien que le ' +
     'programme (' + absents.length + ' élément(s) manquant(s) : ' +
-    absents.slice(0, 3).join(', ') + '). Fermez complètement l\'application et ' +
-    'rouvrez-la ; si cela persiste, videz les données du site.');
+    absents.slice(0, 3).join(', ') + '). Ferme complètement l\'application et ' +
+    'rouvre-la ; si cela persiste, vide les données du site.');
   return false;
 }
 
@@ -331,7 +331,7 @@ function signalerMiseAJour() {
   if (!etat.avaitControleur) return;
   const zone = $('panne');
   if (!zone) return;
-  zone.textContent = '↻ Nouvelle version installée — fermez et rouvrez ' +
+  zone.textContent = 'Nouvelle version installée — ferme et rouvre ' +
     'l\'application pour l\'activer.';
   // Classe distincte : ce n'est pas une erreur, et le rouge de `panne` ferait
   // croire à un incident au moment même où tout se passe bien.
@@ -418,7 +418,7 @@ function brancherReglages() {
   $('btn-vider-photos').addEventListener('click', function () {
     if (!confirm('Vider le cache des photos ?\n\nLa base et les scans en attente ' +
                  'sont conservés. Les photos seront retéléchargées au fil des ' +
-                 'scans, ou d\'un coup avec PRÉCHARGER LES PHOTOS.')) return;
+                 'scans, ou d\'un coup avec « Précharger les photos ».')) return;
     DB.viderPhotos()
       .then(function () {
         message('Cache des photos vidé.');
@@ -439,7 +439,7 @@ function brancherReglages() {
     DB.purgerBase()
       .then(rechargerBaseMemoire)
       .then(rafraichirBandeau)
-      .then(function () { message('Base locale effacée. Lancez une synchronisation.'); });
+      .then(function () { message('Base locale effacée. Lance une synchronisation.'); });
   });
 }
 
@@ -528,7 +528,7 @@ function synchroniser(manuelle) {
       if (etat.demarrage) {
         if (etat.base.participants.size > 0) fermerEcranDemarrage();
         else echecEcranDemarrage('Le serveur n\'a renvoyé aucun participant — '
-          + 'vérifiez l\'identifiant du terminal et le classeur.');
+          + 'vérifie l\'identifiant du terminal et le classeur.');
       }
       if (manuelle) message(recues + ' fiche(s) mise(s) à jour.');
       // Sans cet appel, la rétention de l'historique n'est qu'une intention :
@@ -613,10 +613,9 @@ function effacerTerminal() {
       etat.base = { participants: new Map(), bracelets: new Map() };
       etat.cartes = [];
       afficherPave('TERMINAL EXPIRÉ',
-        'Données effacées. Rescannez un QR code de configuration pour réactiver.',
+        'Données effacées. Rescanne un QR code de configuration pour réactiver.',
         'rouge', true);
       $('identite').className = '';
-      $('repas').className = '';
       return rafraichirBandeau();
     });
 }
@@ -754,7 +753,7 @@ function preparerVerrou(vueVisee) {
   $('pave-verrou').className = '';
   $('verrou-titre').textContent = vueVisee === 'vue-recherche'
     ? 'RECHERCHE VERROUILLÉE' : 'RÉGLAGES VERROUILLÉS';
-  $('verrou-detail').textContent = 'Scannez un bracelet STAFF pour déverrouiller';
+  $('verrou-detail').textContent = 'Scanne un bracelet STAFF pour déverrouiller';
 }
 
 function tenterDeverrouillage(uid) {
@@ -772,7 +771,7 @@ function tenterDeverrouillage(uid) {
     expire: Date.now() + dureeDeverrouillageMs()
   });
   $('pave-verrou').className = '';
-  $('verrou-detail').textContent = 'Scannez un bracelet STAFF pour déverrouiller';
+  $('verrou-detail').textContent = 'Scanne un bracelet STAFF pour déverrouiller';
   if (navigator.vibrate) navigator.vibrate(60);
   // On rouvre l'écran que l'agent voulait, pas systématiquement les réglages :
   // il a cliqué sur RECHERCHE, il doit atterrir sur la recherche.
@@ -785,7 +784,7 @@ function brancherVerrou() {
   $('btn-verrou-nfc').addEventListener('click', demarrerNfc);
   $('btn-verrou-uid').addEventListener('click', function () {
     const saisi = $('champ-uid-carte').value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
-    if (!saisi) { message('Saisissez l\'UID de la carte.', 'erreur'); return; }
+    if (!saisi) { message('Saisis l\'UID de la carte.', 'erreur'); return; }
     if (tenterDeverrouillage(saisi)) $('champ-uid-carte').value = '';
   });
 
@@ -809,7 +808,7 @@ function rafraichirBanniereDeverrouillage() {
       return;
     }
     banniere.innerHTML = '<span class="porteur">SESSION FERMÉE</span>' +
-      '<span class="restant">Présentez une carte STAFF pour ouvrir</span>';
+      '<span class="restant">Présente une carte STAFF pour ouvrir</span>';
     banniere.className = 'visible';
     return;
   }
@@ -873,17 +872,17 @@ function brancherNfc() {
 function navigateurSansNfc() {
   const ua = navigator.userAgent;
   if (/iPhone|iPad/.test(ua)) return 'Détecté : iPhone / iPad (Web NFC n\'y existe pas).';
-  if (/SamsungBrowser/.test(ua)) return 'Détecté : Samsung Internet. Ouvrez le lien dans Chrome.';
-  if (/Firefox/.test(ua)) return 'Détecté : Firefox. Ouvrez le lien dans Chrome.';
-  if (/EdgA/.test(ua)) return 'Détecté : Edge. Ouvrez le lien dans Chrome.';
-  if (/OPR|Opera/.test(ua)) return 'Détecté : Opera. Ouvrez le lien dans Chrome.';
+  if (/SamsungBrowser/.test(ua)) return 'Détecté : Samsung Internet. Ouvre le lien dans Chrome.';
+  if (/Firefox/.test(ua)) return 'Détecté : Firefox. Ouvre le lien dans Chrome.';
+  if (/EdgA/.test(ua)) return 'Détecté : Edge. Ouvre le lien dans Chrome.';
+  if (/OPR|Opera/.test(ua)) return 'Détecté : Opera. Ouvre le lien dans Chrome.';
   if (/; wv\)|GSA\/|FBAV|Instagram|WhatsApp/.test(ua)) {
     return 'Détecté : navigateur intégré à une application (lecteur de QR code, Google, messagerie). ' +
            'Menu ⋮ > « Ouvrir dans Chrome ».';
   }
-  if (!window.isSecureContext) return 'Détecté : page non sécurisée (http). Ouvrez l\'adresse en https.';
+  if (!window.isSecureContext) return 'Détecté : page non sécurisée (http). Ouvre l\'adresse en https.';
   const version = (ua.match(/Chrome\/(\d+)/) || [])[1];
-  if (version && Number(version) < 89) return 'Détecté : Chrome ' + version + ', trop ancien. Mettez Chrome à jour.';
+  if (version && Number(version) < 89) return 'Détecté : Chrome ' + version + ', trop ancien. Mets Chrome à jour.';
   return 'Navigateur : ' + ua;
 }
 
@@ -899,9 +898,9 @@ function demarrerNfc() {
     $('btn-nfc').disabled = true;
     etat.alterneNfc = true;
     rendreEtatReseau();
-    $('btn-verrou-nfc').textContent = 'LECTURE NFC ACTIVE — PRÉSENTEZ LA CARTE';
+    $('btn-verrou-nfc').textContent = 'Lecture NFC active — présente la carte';
     $('btn-verrou-nfc').disabled = true;
-    afficherPave('PRÊT', 'Approchez un bracelet', null, true);
+    afficherPave('PRÊT', 'Approche un bracelet', null, true);
 
     lecteur.onreading = function (evenement) {
       const uid = normaliserUid(evenement.serialNumber);
@@ -929,12 +928,12 @@ function demarrerNfc() {
       afficherPave('LECTURE IMPOSSIBLE',
         etat.echecsLecture >= 2
           ? 'Puce non compatible NDEF (carte de transport, badge MIFARE) — ' +
-            'utilisez la saisie manuelle'
-          : 'Représentez le bracelet',
+            'utilise la saisie manuelle'
+          : 'Représente le bracelet',
         'orange');
     };
   }).catch(function (erreur) {
-    $('btn-nfc').textContent = 'DÉMARRER LA LECTURE NFC';
+    $('btn-nfc').textContent = 'Démarrer la lecture NFC';
     afficherPave('NFC INDISPONIBLE', erreur.message, 'rouge');
   });
 }
@@ -975,7 +974,7 @@ function traiterScan(uid) {
   // défaut), journalisée comme telle.
   if (etat.blocage) {
     if (navigator.vibrate) navigator.vibrate([60, 60, 60]);
-    message('Contrôle renforcé en cours — acquittez avant le scan suivant.',
+    message('Contrôle renforcé en cours — acquitte avant le scan suivant.',
             'erreur');
     return;
   }
@@ -1032,18 +1031,13 @@ function afficherDecision(decision) {
   // L'alerte médicale est un bandeau SÉPARÉ : un badge peut être parfaitement
   // valide et porter un risque d'épilepsie, les deux doivent coexister.
   const alerte = $('alerte');
-  alerte.textContent = decision.alerte ? '⚠ ' + decision.alerte : '';
+  alerte.textContent = decision.alerte || '';
   alerte.className = decision.alerte ? 'visible' : '';
 
   const p = decision.participant;
   const identite = $('identite');
   if (p) {
-    identite.className = 'visible';
-    $('nom').textContent = (p.prenom || '') + ' ' + (p.nom || '');
-    $('ligne-numero').innerHTML = 'N° <b>' + echapper(p.numero) + '</b>';
-    $('ligne-statut').innerHTML = 'Statut <b>' + echapper(p.statut || '—') + '</b>';
-    $('ligne-ecole').innerHTML = p.ecole ? 'École <b>' + echapper(p.ecole) + '</b>' : '';
-    afficherPhoto(p.numero);
+    remplirIdentite(p);
   } else {
     identite.className = '';
   }
@@ -1062,7 +1056,12 @@ function afficherDecision(decision) {
  *   jamais.
  */
 function afficherPave(libelle, detail, couleur, systeme, uid) {
-  $('pave-libelle').textContent = libelle;
+  // « PASSBACK SUSPECTÉ — CONTRÔLE RENFORCÉ REQUIS » : le tiret devient un
+  // retour à la ligne. Le libellé du moteur ne change pas — il est partagé
+  // avec la scannette —, seul son affichage.
+  $('pave-libelle').textContent = String(libelle || '').replace(/ — /g, '\n');
+  // Les cartes repas n'appartiennent qu'à la décision qui les a posées.
+  $('services').innerHTML = '';
   $('pave-detail').textContent = detail || '';
   // L'UID n'est affiché que pour un bracelet inconnu : c'est le seul cas où il
   // sert à quelque chose — le recopier dans le classeur pour déclarer une carte
@@ -1101,10 +1100,9 @@ function afficherEcranPret() {
  */
 function reinitialiserEcran() {
   $('vue-scan').classList.remove('consultation');
-  afficherPave('PRÊT', 'Approchez un bracelet', null, true);
+  afficherPave('PRÊT', 'Approche un bracelet', null, true);
   $('identite').className = '';
   $('alerte').className = '';
-  $('repas').className = '';
   if (Confirmation.ouvert()) Confirmation.fermer();
   etat.attribution = null;
   etat.ficheCourante = null;
@@ -1185,28 +1183,56 @@ function afficherPhoto(numero) {
   });
 }
 
+/**
+ * Les cartes repas, dans le pavé, sous le message d'état. Le régime est déjà
+ * dans ce message (« Dîner samedi — Végétarien ») et la formule dans la fiche :
+ * le bloc séparé qui les répétait a disparu.
+ */
+/**
+ * La fiche du participant : photo, nom, badges, puis toutes les informations
+ * que le profil du terminal reçoit. Un champ absent du profil n'arrive tout
+ * simplement pas dans la base locale, et sa ligne ne s'affiche pas : c'est le
+ * serveur qui décide de ce qu'un poste peut voir, jamais l'écran.
+ */
+function remplirIdentite(p) {
+  $('identite').className = 'visible';
+  $('nom').textContent = (p.prenom || '') + ' ' + (p.nom || '');
+  $('badges').innerHTML = p.mineur === true ? '<span class="badge mineur">Mineur</span>' : '';
+  $('ligne-numero').innerHTML = 'N° <b>' + echapper(p.numero) + '</b>';
+  $('ligne-statut').innerHTML = 'Statut <b>' + echapper(p.statut || '—') + '</b>';
+
+  const lignes = [
+    ['École', p.ecole],
+    ['Sports', p.sports],
+    ['Titre', p.titre],
+    ['Formule', p.formule],
+    ['Contact', p.telephone],
+    // Ne part du serveur que pour un mineur.
+    ['Tuteur', p.contact_urgence]
+  ];
+  $('details').innerHTML = lignes.filter(function (l) {
+    return l[1] !== undefined && l[1] !== null && String(l[1]).trim() !== '';
+  }).map(function (l) {
+    return '<div class="detail"><span>' + echapper(l[0]) + '</span><span>' +
+           echapper(l[1]) + '</span></div>';
+  }).join('');
+  afficherPhoto(p.numero);
+}
+
 function afficherRepas(decision) {
-  const bloc = $('repas');
-  if (!decision.repas) { bloc.className = ''; return; }
-  bloc.className = 'visible';
-
-  const regime = decision.repas.regime || 'Classique';
-  $('regime').textContent = regime.toUpperCase();
-  $('regime').className = 'regime' +
-    (regime.toLowerCase().indexOf('végét') === 0 ? ' vegetarien' : '');
-
+  if (!decision.repas) return;
   const services = (etat.refs.services || []);
   const consommes = decision.repas.repas_consommes || [];
   const courant = decision.repas.service ? decision.repas.service.numero : 0;
+  const commandes = (etat.refs.formules || {})[decision.repas.formule] || [];
 
   $('services').innerHTML = services.map(function (s) {
     const classes = ['service'];
     if (consommes.indexOf(s.numero) !== -1) classes.push('consomme');
+    else if (commandes.indexOf(s.numero) === -1) classes.push('non-commande');
     if (s.numero === courant) classes.push('courant');
     return '<div class="' + classes.join(' ') + '">n°' + s.numero + '</div>';
   }).join('');
-
-  $('formule').textContent = 'Formule : ' + (decision.repas.formule || '—');
 }
 
 /* ─────────────────────────── Écran bloquant ─────────────────────────── */
@@ -1432,7 +1458,7 @@ function afficherResultats(requete) {
   if (!trouves.total) {
     $('compte-resultats').textContent = '';
     $('resultats').innerHTML = (String(requete).trim().length < 2 && !filtreActif)
-      ? '<div class="note">Saisissez au moins deux caractères, ou choisissez un filtre.</div>'
+      ? '<div class="note">Saisis au moins deux caractères, ou choisis un filtre.</div>'
       : '<div class="note">Aucun résultat.</div>';
     return;
   }
@@ -1443,9 +1469,11 @@ function afficherResultats(requete) {
 
   $('resultats').innerHTML = trouves.liste.map(function (p) {
     return '<div class="resultat" data-numero="' + echapper(p.numero) + '">' +
-           '<div class="nom">' + echapper(p.nom + ' ' + p.prenom) + '</div>' +
+           '<div class="avatar" aria-hidden="true">' +
+           echapper(initiales((p.prenom || '') + ' ' + (p.nom || ''))) + '</div>' +
+           '<div class="texte"><div class="nom">' + echapper(p.nom + ' ' + p.prenom) + '</div>' +
            '<div class="meta">' + echapper(p.numero) + ' · ' + echapper(p.statut || '') +
-           (p.ecole ? ' · ' + echapper(p.ecole) : '') + '</div></div>';
+           (p.ecole ? ' · ' + echapper(p.ecole) : '') + '</div></div></div>';
   }).join('');
 
   Array.prototype.forEach.call($('resultats').children, function (element) {
@@ -1473,16 +1501,10 @@ function afficherFiche(numero) {
   etat.ficheCourante = p;
   resumerPassages(p.numero);
 
-  $('alerte').textContent = p.commentaire ? '⚠ ' + p.commentaire : '';
+  $('alerte').textContent = p.commentaire || '';
   $('alerte').className = p.commentaire ? 'visible' : '';
-  $('identite').className = 'visible';
-  $('nom').textContent = (p.prenom || '') + ' ' + (p.nom || '');
-  $('ligne-numero').innerHTML = 'N° <b>' + echapper(p.numero) + '</b>';
-  $('ligne-statut').innerHTML = 'Statut <b>' + echapper(p.statut || '—') + '</b>';
-  $('ligne-ecole').innerHTML = p.ecole ? 'École <b>' + echapper(p.ecole) + '</b>' : '';
-  $('repas').className = '';
+  remplirIdentite(p);
   $('acquittement').className = '';
-  afficherPhoto(p.numero);
 
   // Le guichet d'accueil enchaîne : on cherche la personne, on lui attribue son
   // bracelet dans la foulée. C'est un geste de plus sur un flux qui existe déjà,
@@ -1578,11 +1600,11 @@ const Confirmation = (function () {
     e.champ.value = '';
     e.champ.className = options.champ ? 'visible' : '';
     if (options.champ) e.champ.placeholder = options.champ;
-    e.valider.textContent = options.valider || 'VALIDER';
+    e.valider.textContent = options.valider || 'Valider';
     e.valider.className = 'action' + (options.danger ? ' danger' : '');
     e.valider.style.display = '';
     e.valider.disabled = false;
-    e.annuler.textContent = 'ANNULER';
+    e.annuler.textContent = 'Annuler';
 
     // Le champ ne prend PAS le focus : ouvrir le clavier virtuel masquerait la
     // moitié du panneau, dont le bouton de validation.
@@ -1668,8 +1690,8 @@ function majActions() {
 
   // ATTRIBUER — réservé aux terminaux habilités (colonne `peut_associer`).
   const porte = braceletActif(p.numero);
-  $('btn-attribuer').textContent = porte ? 'ATTRIBUER UN NOUVEAU BRACELET'
-                                         : 'ATTRIBUER UN BRACELET';
+  $('btn-attribuer').textContent = porte ? 'Attribuer un nouveau bracelet'
+                                         : 'Attribuer un bracelet';
   $('btn-attribuer').className = 'action' + (etat.peutAssocier ? '' : ' inerte');
 
   // SUSPENDRE — sans objet tant que la personne n'a pas de bracelet actif.
@@ -1694,7 +1716,7 @@ function signalerParticipant() {
   const p = participantAffiche();
   if (!p) return;
   if (reglagesVerrouilles()) {
-    message('Présentez une carte STAFF pour signaler un participant.', 'erreur');
+    message('Présente une carte STAFF pour signaler un participant.', 'erreur');
     return;
   }
 
@@ -1704,11 +1726,11 @@ function signalerParticipant() {
     note: 'La note sera signée et horodatée. Ce signalement est légalement ' +
           'communicable à la personne concernée sur simple demande (RGPD) : ' +
           'des faits, pas de jugement.',
-    valider: 'ENREGISTRER LA NOTE'
+    valider: 'Enregistrer la note'
   }).then(function (texte) {
     if (texte === null) return;
     if (String(texte).trim().length < 5) {
-      Confirmation.erreur('Décrivez le fait en quelques mots.');
+      Confirmation.erreur('Décris le fait en quelques mots.');
       return;
     }
     Confirmation.occupe('Envoi…');
@@ -1718,7 +1740,7 @@ function signalerParticipant() {
                       numero: p.numero, texte: String(texte).trim() }, 20000)
       .then(function () {
         Confirmation.fermer();
-        message('✓ Note enregistrée pour ' + p.prenom + ' ' + p.nom, 'succes');
+        message('Note enregistrée pour ' + p.prenom + ' ' + p.nom, 'succes');
         if (navigator.vibrate) navigator.vibrate(60);
       })
       .catch(function (erreur) {
@@ -1726,7 +1748,7 @@ function signalerParticipant() {
           ecrireDeverrouillage(null);
           majActions();
           Confirmation.fermer();
-          message('Votre carte n\'autorise pas cette action — représentez une carte STAFF.',
+          message('Ta carte n\'autorise pas cette action — représente une carte STAFF.',
                   'erreur');
           return;
         }
@@ -1734,7 +1756,7 @@ function signalerParticipant() {
         // file : une note remontée trois heures plus tard, sans que personne
         // ne le sache, vaut moins qu'un échec annoncé tout de suite.
         Confirmation.erreur('Échec : ' + erreur.message +
-                            ' — notez le cas sur papier et prévenez le PC');
+                            ' — note le cas sur papier et préviens le PC');
         if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
       });
   });
@@ -1750,7 +1772,7 @@ function ouvrirAttribution() {
     return;
   }
   if (!('NDEFReader' in window)) {
-    message('Ce navigateur ne lit pas le NFC — utilisez un téléphone Android sous Chrome.',
+    message('Ce navigateur ne lit pas le NFC — utilise un téléphone Android sous Chrome.',
             'erreur');
     return;
   }
@@ -1764,11 +1786,11 @@ function ouvrirAttribution() {
         'de contrôle dès la synchronisation suivante.'
       : 'Le bracelet présenté sera lié à cette personne sur tous les points de ' +
         'contrôle.',
-    valider: 'APPROCHER LE BRACELET'
+    valider: 'Approcher le bracelet'
   }).then(function (reponse) {
     if (reponse === null) { etat.attribution = null; return; }
     etat.attribution = p;
-    Confirmation.attendre('Approchez le bracelet du dos du téléphone…');
+    Confirmation.attendre('Approche le bracelet du dos du téléphone…');
     if (!etat.lecteurNfc) demarrerNfc();
   });
 }
@@ -1785,7 +1807,7 @@ function attribuerBracelet(uid) {
   const participant = etat.attribution;
   if (!participant) return;
   const propre = normaliserUid(uid);
-  if (!propre) { Confirmation.erreur('UID illisible — représentez le bracelet.'); return; }
+  if (!propre) { Confirmation.erreur('UID illisible — représente le bracelet.'); return; }
 
   // Le bracelet est-il déjà attribué à quelqu'un d'autre ? On le dit AVANT
   // d'écrire : au guichet, deux personnes repartiraient avec le même bracelet.
@@ -1795,7 +1817,7 @@ function attribuerBracelet(uid) {
     const autre = etat.base.participants.get(existant.numero);
     Confirmation.erreur('Bracelet déjà attribué à ' +
       (autre ? autre.prenom + ' ' + autre.nom : existant.numero) +
-      ' — prenez-en un autre');
+      ' — prends-en un autre');
     if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
     return;   // on reste en attente : le suivant sera lu sans reclic
   }
@@ -1814,7 +1836,7 @@ function attribuerBracelet(uid) {
       }
       etat.attribution = null;
       Confirmation.fermer();
-      message('✓ Bracelet attribué à ' + participant.prenom + ' ' + participant.nom,
+      message('Bracelet attribué à ' + participant.prenom + ' ' + participant.nom,
               'succes');
       if (navigator.vibrate) navigator.vibrate(60);
       // Retour à la liste, FILTRES CONSERVÉS : l'opérateur enchaîne la personne
@@ -1828,7 +1850,7 @@ function attribuerBracelet(uid) {
       // Hors ligne, l'attribution est IMPOSSIBLE : elle doit être connue de
       // tous les postes, pas seulement de ce téléphone.
       Confirmation.erreur('Échec : ' + erreur.message +
-                          ' — réessayez, ou notez le cas sur papier');
+                          ' — réessaie, ou note le cas sur papier');
       if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
     });
 }
@@ -1850,7 +1872,7 @@ function suspendreBracelet() {
     note: 'Le bracelet sera refusé à TOUS les points de contrôle dès la ' +
           'synchronisation suivante. L\'opération est réversible depuis le ' +
           'classeur.',
-    valider: 'SUSPENDRE'
+    valider: 'Suspendre'
   }).then(function (reponse) {
     if (reponse === null) return;
     Confirmation.occupe('Suspension en cours…');
@@ -1859,7 +1881,7 @@ function suspendreBracelet() {
       .then(function () {
         porte.statut = 'SUSPENDU';
         Confirmation.fermer();
-        message('✓ Bracelet suspendu — ' + p.prenom + ' ' + p.nom, 'succes');
+        message('Bracelet suspendu — ' + p.prenom + ' ' + p.nom, 'succes');
         if (navigator.vibrate) navigator.vibrate(60);
         majActions();
       })
@@ -1867,7 +1889,7 @@ function suspendreBracelet() {
         // Hors ligne, la suspension ne vaudrait que pour ce téléphone — c'est
         // exactement l'inverse du but recherché.
         Confirmation.erreur('Échec : ' + erreur.message +
-                            ' — le bracelet reste ACTIF, prévenez le PC');
+                            ' — le bracelet reste ACTIF, préviens le PC');
         if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
       });
   });
@@ -1908,7 +1930,7 @@ function brancherActions() {
 const FILS_PHOTOS = 10;
 
 function prechargerPhotos() {
-  if (!API.estConfigure()) { message('Configurez d\'abord la connexion.', 'erreur'); return; }
+  if (!API.estConfigure()) { message('Configure d\'abord la connexion.', 'erreur'); return; }
   // On ne précharge QUE les participants dont le serveur annonce une photo.
   // Demander les autres coûte 3 à 4 secondes chacun pour un échec certain :
   // sur 2 000 fiches dont vingt seulement ont une photo, c'est la différence
@@ -1917,7 +1939,7 @@ function prechargerPhotos() {
   const numeros = tous.filter(function (p) { return p.photo !== false; })
                       .map(function (p) { return p.numero; });
 
-  if (!tous.length) { message('Base vide : synchronisez d\'abord.', 'erreur'); return; }
+  if (!tous.length) { message('Base vide : synchronise d\'abord.', 'erreur'); return; }
   if (!numeros.length) {
     message('Aucun participant n\'a de photo dans le classeur — rien à précharger.',
             'erreur');
@@ -1930,7 +1952,7 @@ function prechargerPhotos() {
 
   const bouton = $('btn-photos');
   bouton.disabled = true;
-  bouton.textContent = 'MESURE EN COURS…';
+  bouton.textContent = 'Mesure en cours…';
 
   // On MESURE une photo avant d'annoncer quoi que ce soit. Une estimation
   // théorique mentirait d'un facteur douze quand le dossier « Miniatures » n'est
@@ -1955,23 +1977,23 @@ function prechargerPhotos() {
                     : minutes + ' min') + '.\n\n';
 
       if (tailleKo > 50) {
-        texte += '⚠️ Chaque photo pèse ' + Math.round(tailleKo) + ' ko au lieu des ~12 ko\n' +
+        texte += 'Attention : chaque photo pèse ' + Math.round(tailleKo) + ' ko au lieu des ~12 ko\n' +
                  'attendus : le dossier « Miniatures » n\'est pas déclaré côté\n' +
-                 'serveur. Générez-le avec prepare_sd.py AVANT de précharger,\n' +
-                 'vous diviserez le volume et la durée par dix.\n\n';
+                 'serveur. Génère-le avec prepare_sd.py AVANT de précharger,\n' +
+                 'tu diviseras le volume et la durée par dix.\n\n';
       }
       texte += 'À faire en Wi-Fi. Continuer ?';
 
       if (!confirm(texte)) {
         bouton.disabled = false;
-        bouton.textContent = 'PRÉCHARGER LES PHOTOS';
+        bouton.textContent = 'Précharger les photos';
         return;
       }
       return telechargerPhotos(numeros, bouton, dureeUnitaire);
     })
     .catch(function (erreur) {
       bouton.disabled = false;
-      bouton.textContent = 'PRÉCHARGER LES PHOTOS';
+      bouton.textContent = 'Précharger les photos';
       message('Mesure impossible : ' + erreur.message, 'erreur');
     });
 }
@@ -2015,7 +2037,7 @@ function telechargerPhotos(numeros, bouton, dureeUnitaire) {
 
   return Promise.all(fils).then(function () {
     bouton.disabled = false;
-    bouton.textContent = 'PRÉCHARGER LES PHOTOS';
+    bouton.textContent = 'Précharger les photos';
     message(obtenues + ' photo(s) en cache, ' + absentes + ' absente(s).');
     return rafraichirBandeau();
   });
@@ -2049,6 +2071,8 @@ function montrerVue(identifiant) {
   Array.prototype.forEach.call(document.querySelectorAll('nav button'), function (bouton) {
     const classes = [];
     if (bouton.dataset.vue === ongletActif) classes.push('actif');
+    if (bouton.dataset.vue === ongletActif) bouton.setAttribute('aria-current', 'page');
+    else bouton.removeAttribute('aria-current');
     // Le cadenas dit que l'onglet EXISTE mais demande une carte — un bouton
     // simplement inerte laisserait croire à une panne.
     if (VUES_RESERVEES.indexOf(bouton.dataset.vue) !== -1 && verrouille) {
@@ -2067,6 +2091,8 @@ function montrerVue(identifiant) {
   }
   // L'historique n'est PAS dans VUES_RESERVEES : il s'ouvre sans carte.
   if (identifiant === 'vue-historique') afficherHistorique();
+  // Une carte vient peut-être d'ouvrir la session : le bandeau passe en staff.
+  rendreEspace();
 }
 
 /**
@@ -2106,6 +2132,7 @@ function lancerAlternanceBandeau() {
 }
 
 function rafraichirBandeau() {
+  rendreEspace();
   return DB.compterFileScans().then(function (attente) {
     $('etat-file').textContent = attente + ' en attente';
     if (!navigator.onLine) {
@@ -2114,6 +2141,30 @@ function rafraichirBandeau() {
       definirEtatReseau('en ligne');
     }
   });
+}
+
+/**
+ * Ligne d'identité du bandeau : quel espace, quel poste, quel point.
+ *
+ * C'est le « bandeau connecté » du design system : on sait toujours dans quel
+ * espace on se trouve — bénévole par défaut, staff tant qu'une carte a ouvert
+ * la session, avec alors les initiales du porteur dans la pastille.
+ */
+function rendreEspace() {
+  const ouverture = etat.deverrouillage;
+  const staff = !!ouverture && ouverture.expire > Date.now();
+  definirTexte('etat-espace', staff ? 'Espace staff' : 'Espace bénévole');
+  definirTexte('etat-point', etat.pointControle || '');
+  const lettres = staff ? initiales(ouverture.nom) : '';
+  definirTexte('etat-initiales', lettres);
+  const avatar = $('bandeau-avatar');
+  if (avatar) avatar.className = lettres ? 'initiales' : '';
+}
+
+/** « Léa Martin » → « LM ». Deux lettres au plus, comme les avatars du design system. */
+function initiales(nomComplet) {
+  return String(nomComplet || '').trim().split(/\s+/).slice(0, 2)
+    .map(function (mot) { return mot.charAt(0); }).join('').toUpperCase();
 }
 
 /**

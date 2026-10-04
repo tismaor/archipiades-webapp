@@ -3,108 +3,373 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#141414">
 <title>echosys — Contrôle d'accès</title>
 <link rel="manifest" href="manifest.json">
 <style>
-/* Police officielle de l'association, réservée AU NOM de l'application.
-   Tout le reste de l'interface garde la chasse fixe : elle aligne les colonnes
-   de chiffres, les UID et les listes, et c'est elle qui rend l'écran lisible en
-   plein soleil. Une police de marque n'a pas à s'en mêler.
+/* ═════════════════════════════ Polices ═════════════════════════════ */
+/* Les trois familles du design system, embarquées dans la coque — jamais
+   chargées depuis Google Fonts : la Web App doit fonctionner hors ligne dès
+   la première ouverture, et une police servie d'ailleurs retomberait en
+   silence sur une police de repli, mise en page comprise.
 
-   `font-display: block` : le nom attend sa police plutôt que de s'afficher
-   deux fois — une fois en chasse fixe, une fois en Btp. Sur un écran de
-   démarrage, ce clignotement se voit. */
+   Btp, police de l'association, est réservée AU NOM de l'application.
+   `font-display: block` pour elle seule : sur l'écran de démarrage, le nom
+   ne doit pas s'afficher deux fois, en repli puis en Btp.
+
+   Oswald (titres) et Lato (texte) : licence SIL OFL 1.1. Oswald est le
+   fichier « latin » de Google Fonts, police variable 400–700 ; Lato est
+   réduite au latin depuis les fichiers d'origine, mentions de licence
+   conservées dans le fichier. */
 @font-face {
   font-family: 'Btp';
   src: url('btp.woff2') format('woff2');
-  font-weight: normal;
-  font-style: normal;
-  font-display: block;
+  font-weight: normal; font-style: normal; font-display: block;
+}
+@font-face {
+  font-family: 'Oswald';
+  src: url('oswald.woff2') format('woff2');
+  font-weight: 400 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Lato';
+  src: url('lato-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Lato';
+  src: url('lato-700.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Lato';
+  src: url('lato-900.woff2') format('woff2');
+  font-weight: 900; font-style: normal; font-display: swap;
 }
 
 /*
- * Charte terminal monochrome.
+ * ═══════════════════════ Direction artistique ═══════════════════════
  *
- * Fond noir, texte blanc, police à chasse fixe. LA COULEUR EST RÉSERVÉE À
- * L'INFORMATION CRITIQUE — vert autorisé, rouge refusé, orange contrôle
- * approfondi, jaune alerte médicale. Rien d'autre n'est coloré, pour qu'un
- * agent qui voit du rouge sache immédiatement que quelque chose ne va pas,
- * sans avoir à lire.
+ * Design system « Archipiades 12 — App » (DESIGN_SYSTEM_ARCHIPIADES.md),
+ * en NÉGATIF. L'application publique de l'événement est claire, sur fond
+ * gris chaud ; echosys, l'outil de l'accréditation, en est le négatif :
+ * fond sombre, cartes grises, texte blanc. Même grammaire — Oswald en
+ * capitales pour les titres, Lato pour le reste, cartes à rayon 14 sans
+ * ombre, badges en aplats francs, icônes au trait — et l'on sait d'un coup
+ * d'œil dans quelle application on se trouve.
  *
- * Seule exception : la photo d'identité reste en couleur, l'identification
- * visuelle y gagne trop.
+ * Fond sombre, délibérément : la lecture NFC exige l'écran allumé en
+ * continu, et sur un écran OLED un fond blanc vide la batterie bien plus vite.
+ *
+ * Le rouge suit le design system à la lettre : accent (bouton principal,
+ * onglet actif) ET refus. Les verdicts sont des aplats francs :
+ *   vert #12873F autorisé · rouge #E62015 refusé ·
+ *   orange #F26B00 contrôle renforcé · ambre #FFB000 alerte médicale.
+ * L'orange n'existe pas dans le design system, qui ne connaît pas de
+ * passback : il s'y ajoute au même niveau d'intensité que les autres états.
+ * Chaque verdict porte aussi une icône et un libellé : une couleur ne porte
+ * jamais seule une information.
+ *
+ * Les valeurs viennent du design system ; celles qu'il ne prévoit pas — le
+ * négatif de ses fonds clairs — sont marquées « négatif ».
  */
 :root {
-  --fond: #000;
-  --texte: #fff;
-  --gris: #8a8a8a;
-  --gris-sombre: #2a2a2a;
-  --vert: #00c853;
-  --rouge: #d50000;
-  --orange: #ff6d00;
-  --jaune: #ffd600;
+  /* Couleurs du design system */
+  --red: #E62015;
+  --red-on-dark: #FF6B60;     /* rouge pour un texte ou une icône sur fond noir */
+  --green: #12873F;
+  --amber: #FFB000;
+  --ink: #141414;             /* bandeau, barre d'onglets */
+  --ink-2: #262626;
+  --ink-3: #2A2A2A;
+  --text-on-dark-2: #D6D6D6;
+  --chip-border: #4A4A4A;     /* bordure sur fond noir */
+  --chevron: #9A9A9A;
+
+  /* Négatif des fonds clairs */
+  --ground: #1C1C1C;          /* négatif de --ground #F5F4F2 */
+  --surface: #262626;         /* négatif de --surface #FFFFFF : cartes */
+  --surface-2: #2E2E2E;       /* négatif de --neutral-fill : pastilles, tuiles */
+  --line: #383838;            /* négatif de --line : bordure des cartes */
+  --line-soft: #313131;       /* négatif de --line-soft : séparateurs */
+  --text: #FFFFFF;
+  --text-2: #D6D6D6;          /* secondaire */
+  --text-3: #9A9A9A;          /* méta, onglets inactifs (5,7:1 sur les cartes) */
+  --inerte: #6B6B6B;
+
+  /* Hors design system */
+  --orange: #F26B00;          /* contrôle renforcé (passback) */
+  --overlay: rgba(0, 0, 0, 0.6);
+
+  /* Polices */
+  --f-titre: 'Oswald', 'Arial Narrow', sans-serif;
+  --f-texte: 'Lato', 'Helvetica Neue', sans-serif;
+  --f-logo: 'Btp', 'Lato', sans-serif;
+  /* Les UID restent en chasse fixe : en Oswald condensé, B et 8, D et 0 se
+     confondent, et un UID se recopie caractère par caractère. */
+  --f-code: ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, monospace;
+
+  /* Rayons */
+  --r-carte: 14px;
+  --r-bouton: 12px;
+  --r-segment: 9px;
+  --r-badge: 6px;
+  --r-chip: 20px;
+  --r-pave: 18px;
+
+  /* Une seule taille pour tout texte d'information : sous-texte du verdict,
+     lignes de la fiche, boutons, notes des confirmations, messages. Les
+     titres (Oswald) et les légendes de champ restent à part. */
+  --t-info: 16px;
+
+  /* Icônes du design system, au trait, en masques CSS : elles prennent la
+     couleur du texte et survivent aux `textContent` du programme, qui
+     effaceraient un SVG placé dans le bouton. Jamais d'emoji. */
+  --i-alerte: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 2 20h20z'/%3E%3Cpath d='M12 10v4M12 17v.5'/%3E%3C/svg%3E");
+  --i-cadenas: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='10' rx='2'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E");
+  --i-coche: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+  --i-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E");
+  --i-retour: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 6l-6 6 6 6'/%3E%3C/svg%3E");
+  --i-scanner: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M7 12h10'/%3E%3C/svg%3E");
+  --i-interdit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M5.6 5.6l12.8 12.8'/%3E%3C/svg%3E");
+  --i-fleches: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 8a8.5 8.5 0 0 0-15.5 1.5'/%3E%3Cpath d='M4 16a8.5 8.5 0 0 0 15.5-1.5'/%3E%3Cpath d='M20 3.5V8h-4.5'/%3E%3Cpath d='M4 20.5V16h4.5'/%3E%3C/svg%3E");
+  --i-export: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11M7 10l5 5 5-5M5 20h14'/%3E%3C/svg%3E");
+  --i-corbeille: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'/%3E%3C/svg%3E");
+  --i-fiche: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='3' width='16' height='18' rx='2'/%3E%3Ccircle cx='12' cy='10' r='3'/%3E%3Cpath d='M8 17c1-2 2.3-3 4-3s3 1 4 3'/%3E%3C/svg%3E");
 }
+
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body {
   height: 100%;
-  background: var(--fond);
-  color: var(--texte);
-  font-family: "SF Mono", "Roboto Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
-  font-size: 16px;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--f-texte);
+  font-size: 15px;
+  line-height: 1.4;
   overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
 }
-body { display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+body { display: flex; flex-direction: column; }
+svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+.masque {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
 
-/* ── Bandeau d'état permanent ─────────────────────────────────────────── */
+/* ── Bandeau connecté ─────────────────────────────────────────────────
+   Le « bandeau connecté » noir du design system : pastille rouge, espace
+   (bénévole ou staff), nom du poste et point de contrôle, puis l'état du
+   réseau. On sait toujours où l'on est, et sur quel poste. */
 #bandeau {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 12px; border-bottom: 1px solid var(--gris-sombre);
-  font-size: 12px; color: var(--gris); flex: 0 0 auto;
+  flex: 0 0 auto; display: flex; align-items: center; gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 14px;
+  background: var(--ink); border-bottom: 1px solid var(--line-soft);
 }
-#bandeau .actif { color: var(--texte); }
-#bandeau .alerte-reseau { color: var(--orange); }
+#bandeau-avatar {
+  width: 44px; height: 44px; flex: 0 0 auto; border-radius: 50%;
+  background: var(--red); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+#bandeau-avatar svg { width: 22px; height: 22px; stroke-width: 2; }
+#etat-initiales { display: none; font: 600 17px/1 var(--f-titre); }
+#bandeau-avatar.initiales svg { display: none; }
+#bandeau-avatar.initiales #etat-initiales { display: block; }
+#bandeau .identite-poste { flex: 1 1 auto; min-width: 0; }
+#etat-espace {
+  font: 900 11px/1.3 var(--f-texte); letter-spacing: .12em;
+  text-transform: uppercase; color: var(--red-on-dark);
+}
+#bandeau .poste {
+  font: 600 20px/1.2 var(--f-titre); color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#etat-point:not(:empty)::before { content: ' · '; color: var(--text-3); }
+#bandeau .etat { font-size: 12px; color: var(--text-on-dark-2); }
+#etat-reseau.alerte-reseau { color: var(--red-on-dark); font-weight: 700; }
+/* Alternance NFC : l'information est le texte, pas une couleur de plus. */
+#etat-reseau.nfc-actif { color: #fff; font-weight: 700; }
+
+/* Bandeau de panne : une erreur ne doit jamais être muette. */
+#panne {
+  display: none; flex: 0 0 auto; gap: 10px; align-items: flex-start;
+  padding: 12px 16px; background: var(--red); color: #fff;
+  font: 700 var(--t-info)/1.4 var(--f-texte);
+}
+#panne.visible { display: flex; }
+#panne::before {
+  content: ''; flex: 0 0 auto; width: 18px; height: 18px; background: currentColor;
+  -webkit-mask: var(--i-alerte) center / contain no-repeat;
+  mask: var(--i-alerte) center / contain no-repeat;
+}
+/* Une mise à jour disponible n'est pas une panne : fond neutre, pas de rouge.
+   Le rouge doit rester le signal d'un incident, sinon il ne veut plus rien dire. */
+#panne.information {
+  background: var(--surface-2); color: var(--text);
+  border-bottom: 1px solid var(--line);
+}
+#panne.information::before {
+  -webkit-mask-image: var(--i-fleches); mask-image: var(--i-fleches);
+}
 
 /* ── Zone principale ──────────────────────────────────────────────────── */
-main { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.vue { display: none; padding: 16px; }
+main {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  background: var(--ground);
+}
+.vue { display: none; padding: 16px 16px 24px; }
 .vue.visible { display: block; }
 
-/* ── Pavé de décision ─────────────────────────────────────────────────── */
-#pave {
-  padding: 24px 16px; text-align: center;
-  border: 2px solid var(--gris-sombre);
-  background: var(--fond);
+/* ── Boutons ──────────────────────────────────────────────────────────
+   Les gabarits du design system, en négatif :
+     .principal      — primaire : aplat rouge, texte blanc
+     (aucune classe) — secondaire : cadre blanc, texte blanc
+     .action         — secondaire, pour les actions de la fiche et des réglages
+     .action.danger  — conséquence hors du poste : aplat rouge
+     .action.inerte  — sans objet ici : grisé, cadenas
+   Même hauteur pour tous : c'est la couleur et l'icône qui distinguent. */
+button, .bouton {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; min-height: 52px; padding: 0 16px; margin-top: 10px;
+  border-radius: var(--r-bouton); border: 1px solid #fff;
+  background: transparent; color: #fff;
+  font: 700 var(--t-info)/1.2 var(--f-texte); text-align: center;
+  cursor: pointer;
 }
-#pave.vert   { background: var(--vert);   color: #000; border-color: var(--vert); }
-#pave.rouge  { background: var(--rouge);  color: #fff; border-color: var(--rouge); }
-#pave.orange { background: var(--orange); color: #000; border-color: var(--orange); }
-#pave-libelle { font-size: 26px; font-weight: 700; line-height: 1.15; letter-spacing: -0.5px; }
-#pave-detail { font-size: 14px; margin-top: 8px; opacity: 0.85; }
+button:active { background: rgba(255, 255, 255, 0.08); }
+button:disabled { opacity: 0.4; }
+button.principal { background: var(--red); border-color: var(--red); font-weight: 900; }
+button.principal:active { filter: brightness(1.12); background: var(--red); }
+button.discret { border-color: var(--chip-border); color: var(--text-2); }
+button.action.danger { background: var(--red); border-color: var(--red); color: #fff; font-weight: 900; }
+button.action.danger:active { filter: brightness(1.12); background: var(--red); }
+button.action.inerte {
+  background: transparent; border-color: var(--line); color: var(--inerte);
+  font-weight: 700; cursor: default;
+}
+/* Un bouton grisé doit dire POURQUOI il est inerte, d'où le cadenas. */
+button.action.inerte::after {
+  content: ''; flex: 0 0 auto; width: 14px; height: 14px; background: currentColor;
+  -webkit-mask: var(--i-cadenas) center / contain no-repeat;
+  mask: var(--i-cadenas) center / contain no-repeat;
+}
+
+/* Icône en tête de bouton, portée par une variable propre à chaque bouton. */
+#btn-nfc, #btn-verrou-nfc, #btn-demarrage-reessayer { --icone: var(--i-scanner); }
+#btn-signaler { --icone: var(--i-alerte); }
+#btn-attribuer, #btn-sync { --icone: var(--i-fleches); }
+#btn-suspendre { --icone: var(--i-interdit); }
+#btn-acquitter, #btn-enregistrer, #btn-verrou-uid { --icone: var(--i-coche); }
+#btn-photos { --icone: var(--i-export); }
+#btn-vider-photos, #btn-purger { --icone: var(--i-corbeille); }
+#btn-effacer { --icone: var(--i-retour); }
+#btn-nfc::before, #btn-verrou-nfc::before, #btn-demarrage-reessayer::before,
+#btn-signaler::before, #btn-attribuer::before, #btn-sync::before,
+#btn-suspendre::before, #btn-acquitter::before, #btn-enregistrer::before,
+#btn-verrou-uid::before, #btn-photos::before, #btn-vider-photos::before,
+#btn-purger::before, #btn-effacer::before {
+  content: ''; flex: 0 0 auto; width: 20px; height: 20px; background: currentColor;
+  -webkit-mask: var(--icone) center / contain no-repeat;
+  mask: var(--icone) center / contain no-repeat;
+}
+
+
+/* ── Champs ───────────────────────────────────────────────────────────── */
+label {
+  display: block; margin-top: 16px;
+  font: 700 12px/1.3 var(--f-texte); color: var(--text-3);
+}
+input, textarea {
+  width: 100%; margin-top: 6px; padding: 0 14px; min-height: 48px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--chip-border); border-radius: var(--r-bouton);
+  font: 400 16px/1.4 var(--f-texte);
+}
+input:focus, textarea:focus { outline: none; border-color: #fff; }
+input::placeholder, textarea::placeholder { color: var(--text-3); }
+
+/* Champ de recherche du design system : l'icône et le champ dans un même
+   cadre, le libellé masqué mais présent pour les lecteurs d'écran. */
+label.champ-recherche {
+  display: flex; align-items: center; gap: 10px; margin: 0;
+  height: 48px; padding: 0 14px;
+  background: var(--surface); border: 1px solid var(--chip-border);
+  border-radius: var(--r-bouton); color: var(--text-3);
+}
+label.champ-recherche:focus-within { border-color: #fff; }
+label.champ-recherche svg { width: 20px; height: 20px; flex: 0 0 auto; stroke-width: 1.8; }
+label.champ-recherche input {
+  flex: 1 1 auto; min-width: 0; height: 100%; min-height: 0; margin: 0; padding: 0;
+  border: none; border-radius: 0; background: transparent; font-size: var(--t-info);
+}
+input[type="search"]::-webkit-search-cancel-button { filter: invert(1); opacity: 0.6; }
+
+/* ── Pavé de décision ─────────────────────────────────────────────────
+   Un aplat franc, comme les badges d'état du design system, à la taille
+   d'une carte : c'est la couleur qui décide, elle se lit avant le texte.
+   L'icône dans l'angle redit le verdict pour qui distingue mal les teintes. */
+#pave {
+  position: relative; padding: 20px 18px 18px;
+  border-radius: var(--r-pave); border: 1px solid var(--line);
+  background: var(--surface); color: var(--text);
+}
+#pave::after {
+  content: ''; position: absolute; top: 20px; right: 18px; width: 30px; height: 30px;
+  background: currentColor; opacity: 0.9;
+  -webkit-mask: var(--i-scanner) center / contain no-repeat;
+  mask: var(--i-scanner) center / contain no-repeat;
+}
+#pave-libelle {
+  font: 700 28px/1.05 var(--f-titre); letter-spacing: .02em;
+  text-transform: uppercase; padding-right: 40px; white-space: pre-line;
+}
+#pave-detail { font: 700 var(--t-info)/1.35 var(--f-texte); margin-top: 8px; color: var(--text-2); }
+#pave.vert   { background: var(--green);  border-color: var(--green);  color: #fff; }
+#pave.rouge  { background: var(--red);    border-color: var(--red);    color: #fff; }
+#pave.orange { background: var(--orange); border-color: var(--orange); color: var(--ink); }
+#pave.vert #pave-detail, #pave.rouge #pave-detail { color: rgba(255, 255, 255, 0.92); }
+#pave.orange #pave-detail { color: var(--ink); }
+#pave.vert::after   { -webkit-mask-image: var(--i-coche);    mask-image: var(--i-coche); }
+#pave.rouge::after  { -webkit-mask-image: var(--i-interdit); mask-image: var(--i-interdit); }
+#pave.orange::after { -webkit-mask-image: var(--i-alerte);   mask-image: var(--i-alerte); }
+#vue-scan.consultation #pave::after {
+  -webkit-mask-image: var(--i-fiche); mask-image: var(--i-fiche);
+}
 /* UID d'un bracelet inconnu : c'est la seule façon de le déclarer dans le
    classeur (compte privilégié, association manuelle). Il doit être lisible et
    sélectionnable, donc affiché en clair et non dans un message fugace. */
 #pave-uid {
-  display: none; margin-top: 12px; font-size: 17px; letter-spacing: 1px;
-  font-weight: 700; user-select: all; -webkit-user-select: all;
+  display: none; width: fit-content; max-width: 100%; margin-top: 12px; padding: 6px 10px;
+  border-radius: var(--r-segment); background: rgba(0, 0, 0, 0.2);
+  font: 700 18px/1.2 var(--f-code); letter-spacing: 1px; word-break: break-all;
+  user-select: all; -webkit-user-select: all;
 }
 #pave-uid.visible { display: block; }
 
-/* Alerte médicale : distincte du pavé, elle ne doit jamais être masquée. */
+/* Alerte médicale : distincte du pavé, elle ne doit jamais être masquée.
+   Aplat ambre à texte noir, comme le badge « En attente » du design system. */
 #alerte {
-  display: none; margin-top: 12px; padding: 12px;
-  background: var(--jaune); color: #000; font-weight: 700; font-size: 15px;
+  display: none; gap: 10px; align-items: flex-start; margin-top: 10px; padding: 12px 14px;
+  border-radius: var(--r-bouton); background: var(--amber); color: var(--ink);
+  font: 900 var(--t-info)/1.35 var(--f-texte);
 }
-#alerte.visible { display: block; }
+#alerte.visible { display: flex; }
+#alerte::before {
+  content: ''; flex: 0 0 auto; width: 20px; height: 20px; margin-top: 1px; background: currentColor;
+  -webkit-mask: var(--i-alerte) center / contain no-repeat;
+  mask: var(--i-alerte) center / contain no-repeat;
+}
 
 /* ── Identité ─────────────────────────────────────────────────────────── */
-#identite { display: none; margin-top: 16px; }
-#identite.visible { display: flex; gap: 14px; align-items: flex-start; }
+#identite { display: none; }
+#identite.visible {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; margin-top: 12px; padding: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-carte);
+}
 /* La miniature est affichée d'office : une vérification visuelle qui exige un
    appui supplémentaire n'est pas faite sous la pression de la file. */
 #photo-zone {
-  position: relative; width: 108px; height: 140px; flex: 0 0 auto;
-  background: var(--gris-sombre); border: 1px solid var(--gris-sombre);
+  position: relative; width: 150px; height: 200px; flex: 0 0 auto;
+  border-radius: 10px; overflow: hidden; background: var(--surface-2);
 }
 #photo { width: 100%; height: 100%; object-fit: cover; display: none; }
 #photo.visible { display: block; }
@@ -113,206 +378,95 @@ main { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 #photo-absente {
   position: absolute; inset: 0; display: flex; align-items: center;
   justify-content: center; text-align: center; padding: 8px;
-  font-size: 10px; line-height: 1.4; color: var(--gris); letter-spacing: 0.5px;
+  font: 700 10px/1.4 var(--f-texte); letter-spacing: .08em; color: var(--text-3);
 }
 #photo-absente.cache { display: none; }
-#infos { flex: 1 1 auto; min-width: 0; }
-#infos .nom { font-size: 21px; font-weight: 700; word-break: break-word; }
-#infos .ligne { font-size: 14px; color: var(--gris); margin-top: 4px; }
-#infos .ligne b { color: var(--texte); font-weight: 400; }
-
-/* ── Bloc repas ───────────────────────────────────────────────────────── */
-#repas { display: none; margin-top: 16px; border: 1px solid var(--gris-sombre); padding: 12px; }
-#repas.visible { display: block; }
-#repas .titre { font-size: 12px; color: var(--gris); text-transform: uppercase; }
-#repas .regime { font-size: 24px; font-weight: 700; margin: 6px 0 12px; }
-#repas .regime.vegetarien { color: var(--jaune); }
-.services { display: flex; gap: 8px; }
-.service {
-  flex: 1; text-align: center; padding: 10px 4px;
-  border: 1px solid var(--gris-sombre); font-size: 13px; color: var(--gris);
+#infos { flex: 1 1 auto; min-width: 0; padding-top: 2px; }
+#infos .nom { font: 600 26px/1.15 var(--f-titre); word-break: break-word; }
+#infos .ligne { font-size: var(--t-info); color: var(--text-3); margin-top: 6px; }
+#infos .ligne:empty { display: none; }
+#infos .ligne b { color: var(--text); font-weight: 700; }
+#badges:empty { display: none; }
+#badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+/* « Mineur » en aplat ambre à texte noir, comme le badge « En attente » du
+   design system : il appelle une attention, pas un refus. */
+.badge {
+  padding: 4px 8px; border-radius: var(--r-badge);
+  font: 900 12px/1.2 var(--f-texte); text-transform: uppercase; letter-spacing: .04em;
 }
-.service.consomme { background: var(--gris-sombre); color: var(--texte); }
-.service.consomme::after { content: " ✓"; }
-.service.courant { border-color: var(--texte); color: var(--texte); }
-
-/* ── Acquittement bloquant ────────────────────────────────────────────── */
-#acquittement {
-  display: none; margin-top: 16px; padding: 16px; text-align: center;
-  border: 2px dashed var(--orange);
+.badge.mineur { background: var(--amber); color: var(--ink); }
+#details:empty { display: none; }
+#details { flex: 1 1 100%; border-top: 1px solid var(--line-soft); }
+#details .detail {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 11px 2px; border-bottom: 1px solid var(--line-soft); font-size: var(--t-info);
 }
-#acquittement.visible { display: block; }
-#acquittement .compte { font-size: 13px; color: var(--gris); margin-top: 8px; }
-
-/* ── Boutons et champs ────────────────────────────────────────────────── */
-button, .bouton {
-  display: block; width: 100%; padding: 15px;
-  background: var(--fond); color: var(--texte);
-  border: 1px solid var(--texte); font-family: inherit; font-size: 15px;
-  cursor: pointer; margin-top: 10px;
+#details .detail:last-child { border-bottom: none; padding-bottom: 2px; }
+#details .detail span:first-child { color: var(--text-3); flex: 0 0 auto; }
+#details .detail span:last-child {
+  color: var(--text); font-weight: 700; text-align: right; word-break: break-word;
+  user-select: text; -webkit-user-select: text;
 }
-button:active { background: var(--texte); color: var(--fond); }
-button.principal { border-width: 2px; font-weight: 700; }
-button.discret { border-color: var(--gris-sombre); color: var(--gris); }
-button:disabled { opacity: 0.4; }
-input {
-  width: 100%; padding: 14px; margin-top: 10px;
-  background: var(--fond); color: var(--texte);
-  border: 1px solid var(--gris); font-family: inherit; font-size: 16px;
-}
-label { display: block; margin-top: 16px; font-size: 12px; color: var(--gris); }
 
-/* ── Résultats de recherche ───────────────────────────────────────────── */
-.resultat { padding: 12px; border-bottom: 1px solid var(--gris-sombre); cursor: pointer; }
-.resultat:active { background: var(--gris-sombre); }
-.resultat .nom { font-size: 17px; }
-.resultat .meta { font-size: 12px; color: var(--gris); margin-top: 2px; }
-
-/* ── Barre de navigation ──────────────────────────────────────────────── */
-/* ⚠️ Garde au bas de la barre d'onglets.
-   Android en navigation gestuelle réserve une bande d'une vingtaine de pixels
-   au bord inférieur : un balayage vers le haut y déclenche le retour à
-   l'accueil, maintenu il ouvre le gestionnaire des applications. Une barre
-   d'onglets collée au bord place donc ses zones tactiles À L'INTÉRIEUR de ce
-   déclencheur — et le moindre glissement du doigt fait disparaître
-   l'application sous les yeux de l'agent.
-   `env(safe-area-inset-bottom)` ne suffit pas : il vaut zéro sur la plupart des
-   Android. D'où les 14 px ajoutés systématiquement. */
-nav {
-  display: flex; border-top: 1px solid var(--gris-sombre); flex: 0 0 auto;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
-}
-nav button {
-  flex: 1; margin: 0; border: none; border-right: 1px solid var(--gris-sombre);
-  padding: 14px 2px; font-size: 11px; color: var(--gris);
-}
-nav button:last-child { border-right: none; }
-nav button.actif { color: var(--texte); border-top: 2px solid var(--texte); }
-
-/* ── Verrou des réglages ───────────────────────────────────────────────── */
-#pave-verrou {
-  padding: 44px 16px; text-align: center; border: 2px solid var(--gris-sombre);
-}
-#pave-verrou.rouge { background: var(--rouge); color: #fff; border-color: var(--rouge); }
-#pave-verrou.rouge #verrou-detail { color: #fff; opacity: 0.85; }
-#verrou-cadenas { font-size: 40px; line-height: 1; margin-bottom: 16px; }
-#verrou-titre { font-size: 22px; font-weight: 700; }
-/* L'instruction est la seule chose à lire : elle ne doit pas être un sous-titre
-   gris qu'on survole, mais la phrase qui saute aux yeux. */
-#verrou-detail { font-size: 17px; margin-top: 14px; line-height: 1.4; }
-#verrou-manuel { display: none; margin-top: 20px; }
-#verrou-manuel.visible { display: block; }
-#saisie-manuelle { display: none; }
-#saisie-manuelle.visible { display: block; }
-
-/* ── Attribution de bracelet (guichet d'accueil) ───────────────────────── */
-/* Un bouton grisé doit dire POURQUOI il est inerte, d'où le cadenas. */
-/* ── Les trois actions de la fiche ─────────────────────────────────────────
-   Un seul gabarit, trois états, et rien d'autre :
-     .action           — disponible : cadre blanc, texte blanc
-     .action.danger    — conséquence hors du poste : blanc sur rouge
-     .action.inerte    — sans objet ici : gris sombre et cadenas
-   Même hauteur, même taille de texte, même graisse pour les trois : c'est la
-   COULEUR qui distingue, jamais la typographie. */
+/* ── Actions de la fiche ──────────────────────────────────────────────── */
 #actions { display: none; }
-#actions.visible { display: block; }
-button.action {
-  font-size: 15px; font-weight: 400; padding: 15px;
-  border: 1px solid var(--texte); color: var(--texte); background: var(--fond);
-}
-button.action.danger {
-  background: var(--rouge); color: #fff; border-color: var(--rouge);
-}
-button.action.inerte {
-  background: var(--fond); color: var(--gris-sombre);
-  border-color: var(--gris-sombre); cursor: default;
-}
-button.action.inerte::after { content: " 🔒"; font-size: 11px; }
-button.action.discret { border-color: var(--gris); color: var(--gris); }
+#actions.visible { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+#actions button { margin-top: 0; }
 
-/* ── Panneau de confirmation ───────────────────────────────────────────── */
-#confirmation {
-  display: none; position: fixed; inset: 0; z-index: 90;
-  background: rgba(0, 0, 0, 0.88);
-  align-items: center; justify-content: center; padding: 20px;
+.services:empty { display: none; }
+/* Les repas dans le pavé, une carte par service :
+     grisée          — non commandé (absent de la formule)
+     noire           — commandé, pas encore servi
+     blanche + coche — déjà servi
+   Le service en cours porte en plus un liseré : c'est celui qu'on sert. */
+.services {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; margin-top: 14px;
 }
-#confirmation.visible { display: flex; }
-#confirmation-boite {
-  width: 100%; max-width: 420px; max-height: 92vh; overflow-y: auto;
-  border: 2px solid var(--texte); background: var(--fond); padding: 20px;
+.service {
+  display: flex; align-items: center; justify-content: center; gap: 6px; height: 44px;
+  border-radius: var(--r-bouton); border: 1px solid var(--chip-border);
+  background: var(--ink); color: #fff;
+  font: 600 15px/1 var(--f-titre);
 }
-#confirmation-titre {
-  font-size: 17px; font-weight: 700; line-height: 1.3; margin-bottom: 12px;
+.service.non-commande { background: transparent; border-color: var(--line); color: var(--inerte); }
+.service.consomme { background: #fff; border-color: #fff; color: var(--ink); }
+.service.consomme::after {
+  content: ''; width: 14px; height: 14px; background: currentColor;
+  -webkit-mask: var(--i-coche) center / contain no-repeat;
+  mask: var(--i-coche) center / contain no-repeat;
 }
-#confirmation.danger #confirmation-titre { color: var(--rouge); }
-#confirmation-champ {
-  display: none; width: 100%; margin-top: 14px; padding: 12px;
-  background: var(--fond); color: var(--texte); border: 1px solid var(--gris);
-  font-family: inherit; font-size: 16px; resize: vertical;
-}
-#confirmation-champ.visible { display: block; }
-/* Le texte explicatif du panneau prend la mise en forme commune à tous les
-   sous-textes de l'application — classe `.note`, rien de plus. Il informe sans
-   concurrencer le titre, qui porte déjà la gravité de l'action. */
-#confirmation-note { display: none; }
-#confirmation-note:not(:empty) { display: block; }
-#confirmation-etat { display: none; font-size: 14px; margin-top: 12px; }
-#confirmation-etat:not(:empty) { display: block; }
-#confirmation-etat.erreur { color: var(--orange); }
-#confirmation-etat.attente { color: var(--texte); }
-#confirmation-boite button { margin-top: 16px; }
-#confirmation-boite button + button { margin-top: 10px; }
+.service.courant { outline: 2px solid #fff; outline-offset: 2px; }
+#pave.orange .service.non-commande { border-color: rgba(20, 20, 20, 0.35); color: rgba(20, 20, 20, 0.55); }
+#pave.orange .service.courant { outline-color: var(--ink); }
 
-/* ── Filtres de recherche ──────────────────────────────────────────────── */
-.filtres { display: flex; gap: 8px; }
-.filtres select {
-  flex: 1; padding: 12px 8px; background: var(--fond); color: var(--texte);
-  border: 1px solid var(--gris); font-family: inherit; font-size: 14px;
-  appearance: none; border-radius: 0;
+/* ── Acquittement bloquant ────────────────────────────────────────────
+   Dans le pavé orange lui-même : le verdict et le geste qu'il exige forment un
+   seul bloc. Contour épais rayé noir et orange, comme sur la scannette : la
+   forme dit « contrôle » même quand la teinte se lit mal. */
+#acquittement { display: none; margin-top: 16px; }
+#acquittement.visible { display: block; }
+#pave:has(#acquittement.visible) {
+  border: 6px solid transparent;
+  background:
+    linear-gradient(var(--orange), var(--orange)) padding-box,
+    repeating-linear-gradient(-45deg, var(--ink) 0 10px, var(--orange) 10px 20px) border-box;
 }
-.filtres select.actif { border-color: var(--texte); border-width: 2px; }
-#compte-resultats { font-size: 12px; color: var(--gris); margin-top: 12px; }
-/* Le jeton en cours occupe la place du pavé de décision : c'est l'élément
-   central de cet écran — qui a ouvert la session, et pour combien de temps. */
-#banniere-deverrouille {
-  display: none; padding: 20px 16px; margin-bottom: 18px; text-align: center;
-  border: 2px solid var(--gris-sombre); font-size: 15px; line-height: 1.4;
+#btn-acquitter.principal {
+  margin-top: 0; background: transparent; border: 2px solid var(--ink);
+  color: var(--ink); font-weight: 900;
 }
-#banniere-deverrouille.visible { display: block; }
-#banniere-deverrouille .porteur { font-size: 18px; font-weight: 700; display: block; }
-#banniere-deverrouille .restant { color: var(--gris); font-size: 13px; }
-
-/* Bandeau de panne : une erreur ne doit jamais être muette. */
-#panne {
-  display: none; padding: 12px; background: var(--rouge); color: #fff;
-  font-size: 13px; line-height: 1.4; flex: 0 0 auto;
-}
-#panne.visible { display: block; }
-/* Une mise à jour disponible n'est pas une panne : fond neutre, pas de rouge.
-   Le rouge doit rester le signal d'un incident, sinon il ne veut plus rien dire. */
-#panne.information {
-  background: var(--gris-sombre); color: var(--texte);
-  border-bottom: 1px solid var(--gris);
-}
-
-/* Onglet verrouillé : l'agent doit COMPRENDRE, pas se heurter à un bouton mort. */
-nav button.verrouille { color: var(--gris-sombre); }
-nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
+#btn-acquitter.principal:active { background: rgba(0, 0, 0, 0.12); filter: none; }
+#acquittement .compte { font: 700 var(--t-info)/1.4 var(--f-texte); color: var(--ink); opacity: 0.8; margin-top: 10px; }
 
 /* Retour à l'écran d'accueil : une SORTIE, pas une action. Sans cadre et sans
    emphase, elle ne concurrence ni ACQUITTER ni les boutons de la fiche — mais
    reste présente dès qu'il y a quelque chose à quitter, sans quoi on se croit
    bloqué sur la dernière personne scannée. */
 #btn-effacer {
-  display: none; border: none; background: none; color: var(--texte);
-  padding: 22px 0 6px; font-size: 14px; text-align: center; width: 100%;
+  display: none; min-height: 44px; margin-top: 14px; border: none; background: none;
+  color: var(--text); font-weight: 700;
 }
-#btn-effacer.visible { display: block; }
-
-
-/* Alternance NFC dans le bandeau : même gris que le reste, l'information est
-   le texte, pas une couleur de plus. */
-#etat-reseau.nfc-actif { color: var(--texte); }
+#btn-effacer.visible { display: flex; }
 
 /* Le pavé reste EN TÊTE sur toutes les fiches, consultation comprise : la
    couleur décide, elle se lit avant le reste, et l'écran garde la même
@@ -320,66 +474,219 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 
    ⚠️ `display: flex` est porté par `.visible` et NON par `#vue-scan` seul : un
    sélecteur d'identifiant l'emporterait sur `.vue { display: none }` et la vue
-   resterait affichée en permanence, par-dessus les autres.
-
-   Écarts : 18 px entre les blocs, 10 px entre les boutons d'un même groupe.
-   Réglé par marges plutôt que par `gap` — un `gap` uniforme séparerait les
-   boutons autant que les blocs, et le groupe d'actions ne se lirait plus comme
-   un groupe. */
+   resterait affichée en permanence, par-dessus les autres. */
 #vue-scan.visible { display: flex; flex-direction: column; }
-#vue-scan.consultation > #identite { margin-top: 18px; }
-#vue-scan.consultation > #actions { margin-top: 18px; }
-#vue-scan.consultation > #actions > button:first-child { margin-top: 0; }
-#vue-scan.consultation > #repas { margin-top: 18px; }
-/* La sortie se détache : elle n'appartient pas au groupe des actions. */
-#vue-scan.consultation > #btn-effacer { margin-top: 10px; }
+#btn-nfc { margin-top: 14px; }
+
+/* ── Avertissements, notes, listes ────────────────────────────────────── */
+.avertissement {
+  margin-top: 12px; padding: 12px 14px; border-radius: var(--r-carte);
+  border: 1px solid var(--red); background: var(--surface);
+  color: var(--text); font-size: var(--t-info); line-height: 1.45;
+}
+.avertissement b { color: var(--red-on-dark); }
+.note { font-size: var(--t-info); color: var(--text-3); margin-top: 8px; line-height: 1.45; }
+h2 {
+  font: 600 18px/1.2 var(--f-titre); letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text); margin: 0 0 10px;
+}
+.liste {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-carte); overflow: hidden;
+}
+.stat {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  min-height: 44px; padding: 10px 16px; border-bottom: 1px solid var(--line-soft);
+  font-size: var(--t-info); color: var(--text-2);
+}
+.stat:last-child { border-bottom: none; }
+.stat span:last-child { color: var(--text); font-weight: 700; text-align: right; }
+
+/* ── Recherche ────────────────────────────────────────────────────────── */
+/* Les filtres prennent l'allure des chips du design system ; un filtre actif
+   passe en aplat blanc. Un filtre qui persiste doit se VOIR : sinon,
+   l'opérateur suivant cherche un nom, ne le trouve pas, et ne comprend pas
+   qu'une école est encore filtrée. */
+.filtres { display: flex; gap: 8px; margin-top: 12px; }
+.filtres select {
+  flex: 1 1 0; min-width: 0; height: 40px; padding: 0 34px 0 14px;
+  border-radius: var(--r-chip); border: 1px solid var(--chip-border);
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center / 16px;
+  color: var(--text); font: 700 14px/1 var(--f-texte);
+  appearance: none; -webkit-appearance: none; text-overflow: ellipsis;
+}
+.filtres select.actif {
+  background-color: #fff; border-color: #fff; color: var(--ink);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23141414' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+#compte-resultats, #compte-historique {
+  font: 700 12px/1.3 var(--f-texte); color: var(--text-3); margin: 14px 2px 8px;
+}
+#compte-resultats:empty, #compte-historique:empty { margin: 8px 0 0; }
+
+/* Listes dans une carte, lignes séparées d'un filet, chevron à droite. */
+#resultats:has(.resultat), #liste-historique:has(.entree-historique) {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-carte); overflow: hidden;
+}
+.resultat, .entree-historique {
+  display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft); cursor: pointer;
+}
+.resultat:last-child, .entree-historique:last-child { border-bottom: none; }
+.resultat:active, .entree-historique:active { background: var(--surface-2); }
+.resultat::after, .entree-historique::after {
+  content: ''; flex: 0 0 auto; width: 18px; height: 18px; background: var(--chevron);
+  -webkit-mask: var(--i-chevron) center / contain no-repeat;
+  mask: var(--i-chevron) center / contain no-repeat;
+}
+.resultat .avatar {
+  width: 40px; height: 40px; flex: 0 0 auto; border-radius: 50%;
+  background: #3A3A3A; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font: 600 14px/1 var(--f-titre);
+}
+.resultat .texte, .entree-historique .corps { flex: 1 1 auto; min-width: 0; }
+.resultat .nom, .entree-historique .nom {
+  font: 700 var(--t-info)/1.3 var(--f-texte);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.resultat .meta { font-size: 14px; color: var(--text-2); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Historique local ─────────────────────────────────────────────────── */
-#compte-historique { font-size: 12px; color: var(--gris); margin: 12px 0; }
-.entree-historique {
-  border-bottom: 1px solid var(--gris-sombre); padding: 10px 2px; cursor: pointer;
-  display: flex; gap: 10px; align-items: baseline;
+.entree-historique .heure {
+  flex: 0 0 auto; width: 44px; font: 600 15px/1 var(--f-titre); color: var(--text);
 }
-.entree-historique .heure { font-size: 13px; color: var(--gris); flex: 0 0 auto; }
-.entree-historique .corps { flex: 1; min-width: 0; }
-.entree-historique .nom { font-size: 15px; font-weight: 700; }
-/* La décision garde sa couleur : c'est l'information, et elle doit se retrouver
-   d'un coup d'œil dans une liste de cent lignes. */
-.entree-historique .decision { font-size: 12px; margin-top: 2px; }
-.entree-historique .decision.vert { color: var(--vert); }
-.entree-historique .decision.rouge { color: var(--rouge); }
-.entree-historique .decision.orange { color: var(--orange); }
-.entree-historique .decision.neutre { color: var(--gris); }
+/* La décision garde sa couleur, en badge à aplat franc : c'est l'information,
+   et elle doit se retrouver d'un coup d'œil dans une liste de cent lignes. */
+.entree-historique .decision {
+  display: inline-block; max-width: 100%; margin-top: 4px; padding: 3px 8px;
+  border-radius: var(--r-badge); font: 900 12px/1.3 var(--f-texte);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--surface-2); color: var(--text-2);
+}
+.entree-historique .decision.vert { background: var(--green); color: #fff; }
+.entree-historique .decision.rouge { background: var(--red); color: #fff; }
+.entree-historique .decision.orange { background: var(--orange); color: var(--ink); }
 
+/* ── Verrou des réglages ──────────────────────────────────────────────── */
+#pave-verrou {
+  padding: 28px 20px 24px; text-align: center;
+  border-radius: var(--r-pave); border: 1px solid var(--line); background: var(--surface);
+}
+#verrou-cadenas {
+  width: 64px; height: 64px; margin: 0 auto 16px; border-radius: 50%;
+  background: var(--surface-2); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+#verrou-cadenas svg { width: 30px; height: 30px; stroke-width: 1.8; }
+#verrou-titre {
+  font: 700 24px/1.1 var(--f-titre); letter-spacing: .03em; text-transform: uppercase;
+}
+/* L'instruction est la seule chose à lire : elle ne doit pas être un sous-titre
+   gris qu'on survole, mais la phrase qui saute aux yeux. */
+#verrou-detail { font-size: 17px; line-height: 1.45; margin-top: 10px; color: var(--text); }
+#pave-verrou.rouge { background: var(--red); border-color: var(--red); color: #fff; }
+#pave-verrou.rouge #verrou-cadenas { background: rgba(0, 0, 0, 0.2); }
+#verrou-manuel { display: none; margin-top: 20px; }
+#verrou-manuel.visible { display: block; }
+#saisie-manuelle { display: none; }
+#saisie-manuelle.visible { display: block; }
+#btn-verrou-nfc { margin-top: 14px; }
+#champ-uid-carte { font-family: var(--f-code); letter-spacing: 1px; }
 
-/* ── Écran de démarrage ────────────────────────────────────────────────── */
+/* ── Réglages ─────────────────────────────────────────────────────────── */
+/* Le jeton en cours occupe la place du pavé de décision : c'est l'élément
+   central de cet écran — qui a ouvert la session, et pour combien de temps. */
+#banniere-deverrouille {
+  display: none; margin-bottom: 22px; padding: 14px 16px;
+  border-radius: var(--r-carte); border: 1px solid var(--line); background: var(--ink);
+}
+#banniere-deverrouille.visible { display: block; }
+#banniere-deverrouille::before {
+  content: 'Session staff'; display: block; margin-bottom: 4px;
+  font: 900 11px/1.3 var(--f-texte); letter-spacing: .12em;
+  text-transform: uppercase; color: var(--red-on-dark);
+}
+#banniere-deverrouille .porteur { display: block; font: 600 20px/1.2 var(--f-titre); color: #fff; }
+#banniere-deverrouille .restant { font-size: 12px; color: var(--text-on-dark-2); }
+#vue-reglages h2 + .liste { margin-bottom: 4px; }
+
+/* ── Panneau de confirmation ──────────────────────────────────────────
+   La « feuille modale » du design system : elle monte du bas, voile sur le
+   reste. Elle couvre l'écran — c'est ce qui empêche l'appui accidentel — sans
+   figer l'application comme le ferait `confirm()`. */
+#confirmation {
+  display: none; position: fixed; inset: 0; z-index: 90;
+  background: var(--overlay); align-items: flex-end; justify-content: center;
+}
+#confirmation.visible { display: flex; }
+#confirmation-boite {
+  width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto;
+  padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 30px);
+  border-radius: 20px 20px 0 0; background: var(--surface);
+  border: 1px solid var(--line); border-bottom: none;
+}
+#confirmation-boite::before {
+  content: ''; display: block; width: 40px; height: 4px; margin: 0 auto 16px;
+  border-radius: 2px; background: var(--chip-border);
+}
+#confirmation-titre {
+  font: 600 22px/1.15 var(--f-titre); letter-spacing: .02em;
+  text-transform: uppercase; margin-bottom: 10px;
+}
+#confirmation.danger #confirmation-titre { color: var(--red-on-dark); }
+#confirmation-champ {
+  display: none; margin-top: 12px; padding: 12px 14px; resize: vertical;
+}
+#confirmation-champ.visible { display: block; }
+/* Le texte explicatif du panneau prend la mise en forme commune à tous les
+   sous-textes de l'application — classe `.note`, rien de plus. Il informe sans
+   concurrencer le titre, qui porte déjà la gravité de l'action. */
+#confirmation-note { display: none; font-size: var(--t-info); color: var(--text-2); }
+#confirmation-note:not(:empty) { display: block; }
+#confirmation-etat { display: none; font: 700 var(--t-info)/1.4 var(--f-texte); margin-top: 12px; }
+#confirmation-etat:not(:empty) { display: block; }
+#confirmation-etat.erreur { color: var(--red-on-dark); }
+#confirmation-etat.attente { color: var(--text); }
+#confirmation-boite button { margin-top: 16px; }
+#confirmation-boite button + button { margin-top: 10px; }
+/* Valider est l'action principale de la feuille : aplat rouge, toujours. */
+#confirmation-valider.action {
+  background: var(--red); border-color: var(--red); color: #fff; font-weight: 900;
+}
+
+/* ── Écran de démarrage ───────────────────────────────────────────────── */
 #demarrage {
   display: none; position: fixed; inset: 0; z-index: 100;
-  background: var(--fond); color: var(--texte);
+  background: var(--ink); color: #fff;
   flex-direction: column; align-items: center; justify-content: center;
   padding: 24px; text-align: center;
 }
 #demarrage.visible { display: flex; }
-#demarrage-logo { width: 118px; height: auto; }
-#demarrage-logo .trace { fill: var(--texte); }
+#demarrage-logo { width: 112px; height: auto; }
+#demarrage-logo .trace { fill: #fff; stroke: none; }
 /* Les liserés reprennent la couleur du FOND : ce sont eux qui détachent les
    ondes concentriques les unes des autres. */
-#demarrage-logo .liseré { fill: var(--fond); }
+#demarrage-logo .liseré { fill: var(--ink); stroke: none; }
 /* Seul le nom de l'application porte la police de l'association. */
 #demarrage-titre {
-  margin-top: 22px; font-family: 'Btp', monospace; font-size: 40px;
+  margin-top: 22px; font-family: var(--f-logo); font-size: 40px;
   font-weight: 400; letter-spacing: 1px; line-height: 1;
 }
-#demarrage-sous-titre { margin-top: 4px; font-size: 13px; color: var(--gris); }
-
+#demarrage-sous-titre {
+  margin-top: 8px; font: 900 11px/1.3 var(--f-texte); letter-spacing: .12em;
+  text-transform: uppercase; color: var(--red-on-dark);
+}
 /* Barre indéterminée : on ne connaît pas le nombre total de fiches avant la
    dernière page, une barre de progression classique mentirait. */
 #demarrage-barre {
-  width: 100%; max-width: 260px; height: 3px; margin-top: 36px;
-  background: var(--gris-sombre); overflow: hidden;
+  width: 100%; max-width: 240px; height: 4px; margin-top: 36px;
+  border-radius: 2px; background: var(--ink-3); overflow: hidden;
 }
 #demarrage-barre-curseur {
-  width: 40%; height: 100%; background: var(--texte);
+  width: 40%; height: 100%; border-radius: 2px; background: var(--red);
   animation: balayage 1.1s ease-in-out infinite;
 }
 @keyframes balayage {
@@ -391,34 +698,67 @@ nav button.verrouille::after { content: " 🔒"; font-size: 10px; }
 @media (prefers-reduced-motion: reduce) {
   #demarrage-barre-curseur { animation: none; width: 100%; }
 }
-
-#demarrage-etat { margin-top: 20px; font-size: 15px; }
-#demarrage-compteur { margin-top: 6px; font-size: 13px; color: var(--gris); min-height: 18px; }
-#demarrage.echec #demarrage-etat { color: var(--orange); }
+#demarrage-etat {
+  margin-top: 20px; font: 600 18px/1.2 var(--f-titre);
+  letter-spacing: .04em; text-transform: uppercase;
+}
+#demarrage-compteur { margin-top: 6px; font-size: 13px; color: var(--text-3); min-height: 18px; }
+#demarrage.echec #demarrage-etat { color: var(--red-on-dark); }
 #demarrage.echec #demarrage-barre { display: none; }
 #demarrage-secours { display: none; width: 100%; max-width: 320px; margin-top: 28px; }
 #demarrage.echec #demarrage-secours { display: block; }
 
 /* Message transitoire : jamais de boîte modale, qui figerait la file. */
 #message {
-  display: none; position: fixed; left: 12px; right: 12px;
-  bottom: calc(64px + env(safe-area-inset-bottom));
-  padding: 12px; background: var(--gris-sombre); color: var(--texte);
-  border: 1px solid var(--gris); font-size: 13px; z-index: 10;
+  display: none; position: fixed; left: 16px; right: 16px; z-index: 10;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  padding: 12px 14px; border-radius: var(--r-bouton);
+  background: var(--ink-3); border: 1px solid var(--chip-border);
+  color: #fff; font: 700 var(--t-info)/1.35 var(--f-texte);
 }
 #message.visible { display: block; }
-#message.erreur { border-color: var(--orange); color: var(--orange); }
+#message.erreur { border: 2px solid var(--red); }
+#message.succes { border: 2px solid var(--green); }
 
-.avertissement { border: 1px solid var(--orange); color: var(--orange); padding: 12px; margin-top: 12px; font-size: 13px; }
-.note { font-size: 12px; color: var(--gris); margin-top: 8px; line-height: 1.5; }
-.stat { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--gris-sombre); font-size: 14px; }
-.stat span:last-child { color: var(--gris); }
-h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bottom: 8px; font-weight: 400; }
+/* ── Barre d'onglets ──────────────────────────────────────────────────
+   Celle du design system : icône au trait au-dessus du libellé, onglet actif
+   en rouge — le rouge « sur fond noir » du design system, plus lisible.
+
+   ⚠️ Garde au bas de la barre d'onglets.
+   Android en navigation gestuelle réserve une bande d'une vingtaine de pixels
+   au bord inférieur : un balayage vers le haut y déclenche le retour à
+   l'accueil, maintenu il ouvre le gestionnaire des applications. Une barre
+   d'onglets collée au bord place donc ses zones tactiles À L'INTÉRIEUR de ce
+   déclencheur — et le moindre glissement du doigt fait disparaître
+   l'application sous les yeux de l'agent.
+   `env(safe-area-inset-bottom)` ne suffit pas : il vaut zéro sur la plupart
+   des Android. D'où les 26 px du design system, et jamais moins de 14 px
+   au-delà de la zone de sécurité. */
+nav {
+  flex: 0 0 auto; display: flex; background: var(--ink);
+  border-top: 1px solid var(--line-soft);
+  padding: 6px 4px max(26px, calc(env(safe-area-inset-bottom, 0px) + 14px));
+}
+nav button {
+  flex: 1 1 0; flex-direction: column; gap: 3px; width: auto; min-height: 48px;
+  margin: 0; padding: 4px 2px; border: none; border-radius: 10px;
+  background: none; color: var(--text-3); font: 700 11px/1.2 var(--f-texte);
+}
+nav button svg { width: 24px; height: 24px; stroke-width: 1.8; }
+nav button.actif { color: var(--red-on-dark); }
+nav button.actif svg { stroke-width: 2; }
+nav button:active { background: rgba(255, 255, 255, 0.06); }
+/* Onglet verrouillé : l'agent doit COMPRENDRE, pas se heurter à un bouton mort. */
+nav button.verrouille:not(.actif) { color: var(--inerte); }
+nav button.verrouille span { display: inline-flex; align-items: center; gap: 3px; }
+nav button.verrouille span::after {
+  content: ''; width: 10px; height: 10px; background: currentColor;
+  -webkit-mask: var(--i-cadenas) center / contain no-repeat;
+  mask: var(--i-cadenas) center / contain no-repeat;
+}
 </style>
 </head>
-<body data-coque="30">
-
-<div id="panne"></div>
+<body data-coque="31">
 
 <!-- ── Écran de démarrage ────────────────────────────────────────────────
      Superposition plein écran affichée à la toute première mise en service,
@@ -452,8 +792,8 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
   <div id="demarrage-compteur"></div>
 
   <div id="demarrage-secours">
-    <button class="principal" id="btn-demarrage-reessayer">RÉESSAYER</button>
-    <button id="btn-demarrage-reglages">OUVRIR LES RÉGLAGES</button>
+    <button class="principal" id="btn-demarrage-reessayer">Réessayer</button>
+    <button id="btn-demarrage-reglages">Ouvrir les réglages</button>
   </div>
 </div>
 
@@ -467,34 +807,48 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
      Le panneau couvre l'écran : c'est ce qui empêche l'appui accidentel — la
      raison pour laquelle une boîte de dialogue restait préférable — sans
      figer l'application comme le fait `confirm()`. -->
-<div id="confirmation">
+<div id="confirmation" role="dialog" aria-modal="true" aria-labelledby="confirmation-titre">
   <div id="confirmation-boite">
     <div id="confirmation-titre"></div>
     <textarea id="confirmation-champ" rows="4" maxlength="300"></textarea>
     <div id="confirmation-note" class="note"></div>
     <div id="confirmation-etat"></div>
-    <button class="action" id="confirmation-valider">VALIDER</button>
-    <button class="action discret" id="confirmation-annuler">ANNULER</button>
+    <button class="action" id="confirmation-valider">Valider</button>
+    <button class="action discret" id="confirmation-annuler">Annuler</button>
   </div>
 </div>
 
-<div id="bandeau">
-  <span id="etat-terminal">—</span>
-  <span id="etat-reseau">hors ligne</span>
-  <span id="etat-file">0 en attente</span>
-</div>
+<header id="bandeau">
+  <div id="bandeau-avatar" aria-hidden="true">
+    <svg viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M7 12h10"/></svg>
+    <span id="etat-initiales"></span>
+  </div>
+  <div class="identite-poste">
+    <div id="etat-espace">Espace bénévole</div>
+    <div class="poste"><span id="etat-terminal">—</span><span id="etat-point"></span></div>
+    <div class="etat"><span id="etat-reseau">hors ligne</span> · <span id="etat-file">0 en attente</span></div>
+  </div>
+</header>
+
+<div id="panne" role="alert"></div>
 
 <main>
 
   <!-- ── Vue scan ─────────────────────────────────────────────────────── -->
   <section id="vue-scan" class="vue visible">
-    <div id="pave">
+    <div id="pave" aria-live="assertive">
       <div id="pave-libelle">PRÊT</div>
-      <div id="pave-detail">Approchez un bracelet</div>
+      <div id="pave-detail">Approche un bracelet</div>
       <div id="pave-uid"></div>
+      <div class="services" id="services"></div>
+      <!-- Passback : ACQUITTER fait partie du verdict, un seul bloc. -->
+      <div id="acquittement">
+        <button class="principal" id="btn-acquitter">Acquitter et continuer</button>
+        <div class="compte" id="compte-a-rebours"></div>
+      </div>
     </div>
 
-    <div id="alerte"></div>
+    <div id="alerte" role="alert"></div>
 
     <div id="identite">
       <div id="photo-zone">
@@ -503,40 +857,30 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
       </div>
       <div id="infos">
         <div class="nom" id="nom">—</div>
+        <div id="badges"></div>
         <div class="ligne" id="ligne-numero"></div>
         <div class="ligne" id="ligne-statut"></div>
-        <div class="ligne" id="ligne-ecole"></div>
       </div>
+      <!-- Toutes les autres informations, une ligne par champ, et seulement
+           celles que le profil du terminal reçoit : ajouter un champ, c'est
+           ajouter une ligne dans remplirIdentite(). -->
+      <div id="details"></div>
     </div>
 
     <div id="actions">
-      <button class="action" id="btn-signaler">SIGNALER CE PARTICIPANT</button>
-      <button class="action" id="btn-attribuer">ATTRIBUER UN BRACELET</button>
-      <button class="action danger" id="btn-suspendre">SUSPENDRE ET INTERDIRE L'ACCÈS</button>
+      <button class="action" id="btn-signaler">Signaler ce participant</button>
+      <button class="action" id="btn-attribuer">Attribuer un bracelet</button>
+      <button class="action danger" id="btn-suspendre">Suspendre et interdire l'accès</button>
     </div>
 
-    <div id="repas">
-      <div class="titre">Régime</div>
-      <div class="regime" id="regime">—</div>
-      <div class="titre">Repas</div>
-      <div class="services" id="services"></div>
-      <div class="note" id="formule"></div>
-    </div>
+    <button id="btn-effacer">Retour à l'accueil</button>
 
-    <div id="acquittement">
-      <div>Contrôle approfondi requis</div>
-      <button class="principal" id="btn-acquitter">ACQUITTER ET CONTINUER</button>
-      <div class="compte" id="compte-a-rebours"></div>
-    </div>
-
-    <button id="btn-effacer">RETOUR À L'ÉCRAN D'ACCUEIL ›</button>
-
-    <button class="principal" id="btn-nfc">DÉMARRER LA LECTURE NFC</button>
+    <button class="principal" id="btn-nfc">Démarrer la lecture NFC</button>
 
     <div id="nfc-indispo" class="avertissement" style="display:none">
       Web NFC n'est pas disponible sur ce navigateur.<br>
       Il n'existe que sur <b>Chrome pour Android</b> : sur iPhone, ou dans un
-      autre navigateur, utilisez la recherche manuelle. C'est une limite du
+      autre navigateur, utilise la recherche manuelle. C'est une limite du
       navigateur, pas de l'application.
       <div id="nfc-indispo-navigateur" style="margin-top:8px"></div>
     </div>
@@ -544,20 +888,28 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
 
   <!-- ── Vue recherche ────────────────────────────────────────────────── -->
   <section id="vue-recherche" class="vue">
+    <label class="champ-recherche">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+      <span class="masque">Rechercher un participant</span>
+      <input id="champ-recherche" type="search" placeholder="Nom, prénom ou numéro"
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    </label>
     <div class="filtres">
-      <select id="filtre-ecole"><option value="">Toutes les écoles</option></select>
-      <select id="filtre-statut"><option value="">Tous les statuts</option></select>
+      <select id="filtre-ecole" aria-label="Filtrer par école"><option value="">Toutes les écoles</option></select>
+      <select id="filtre-statut" aria-label="Filtrer par statut"><option value="">Tous les statuts</option></select>
     </div>
-    <input id="champ-recherche" type="search" placeholder="Nom, prénom ou numéro…"
-           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
     <div id="compte-resultats"></div>
     <div id="resultats"></div>
   </section>
 
   <!-- ── Vue historique ───────────────────────────────────────────────── -->
   <section id="vue-historique" class="vue">
-    <input id="filtre-historique" type="search" placeholder="Filtrer par nom ou numéro…"
-           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <label class="champ-recherche">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+      <span class="masque">Filtrer l'historique</span>
+      <input id="filtre-historique" type="search" placeholder="Filtrer par nom ou numéro"
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    </label>
     <div id="compte-historique"></div>
     <div id="liste-historique"></div>
   </section>
@@ -565,16 +917,18 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
   <!-- ── Verrou des réglages ──────────────────────────────────────────── -->
   <section id="vue-verrou" class="vue">
     <div id="pave-verrou">
-      <div id="verrou-cadenas">🔒</div>
+      <div id="verrou-cadenas" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      </div>
       <div id="verrou-titre">RÉGLAGES VERROUILLÉS</div>
-      <div id="verrou-detail">Scannez un bracelet STAFF pour déverrouiller</div>
+      <div id="verrou-detail">Scanne un bracelet STAFF pour déverrouiller</div>
     </div>
-    <button class="principal" id="btn-verrou-nfc">SCANNER UN BRACELET STAFF</button>
+    <button class="principal" id="btn-verrou-nfc">Scanner un bracelet STAFF</button>
     <div id="verrou-manuel">
       <label for="champ-uid-carte">Ou saisir l'UID de la carte</label>
       <input id="champ-uid-carte" type="text" autocomplete="off" autocapitalize="characters"
              spellcheck="false" placeholder="04A1B2C3D4E5F6">
-      <button id="btn-verrou-uid">DÉVERROUILLER</button>
+      <button id="btn-verrou-uid">Déverrouiller</button>
     </div>
   </section>
 
@@ -585,17 +939,20 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
     <div id="banniere-deverrouille"></div>
 
     <h2>État local</h2>
-    <div class="stat"><span>Participants</span><span id="stat-participants">—</span></div>
-    <div class="stat"><span>Bracelets</span><span id="stat-bracelets">—</span></div>
-    <div class="stat"><span>Photos en cache</span><span id="stat-photos">—</span></div>
-    <div class="stat"><span>Scans en attente</span><span id="stat-attente">—</span></div>
-    <div class="stat"><span>Historique conservé</span><span id="stat-historique">—</span></div>
-    <div class="stat"><span>Dernière synchronisation</span><span id="stat-sync">—</span></div>
-    <div class="stat"><span>Point de contrôle</span><span id="stat-point">—</span></div>
-    <div class="stat"><span>Version de l'application</span><span id="stat-version">—</span></div>
-    <div class="stat"><span>Données stockées</span><span id="stat-stockage">—</span></div>
-    <div class="stat"><span>Poids moyen d'une photo</span><span id="stat-poids-photo">—</span></div>
-    <div class="stat"><span>Mémoire vive utilisée</span><span id="stat-memoire">—</span></div>
+    <div class="liste">
+      <div class="stat"><span>Participants</span><span id="stat-participants">—</span></div>
+      <div class="stat"><span>Bracelets</span><span id="stat-bracelets">—</span></div>
+      <div class="stat"><span>Photos en cache</span><span id="stat-photos">—</span></div>
+      <div class="stat"><span>Scans en attente</span><span id="stat-attente">—</span></div>
+      <div class="stat"><span>Historique conservé</span><span id="stat-historique">—</span></div>
+      <div class="stat"><span>Dernière synchronisation</span><span id="stat-sync">—</span></div>
+      <div class="stat"><span>Point de contrôle</span><span id="stat-point">—</span></div>
+      <div class="stat"><span>Version de l'application</span><span id="stat-version">—</span></div>
+      <div class="stat"><span>Données stockées</span><span id="stat-stockage">—</span></div>
+      <div class="stat"><span>Poids moyen d'une photo</span><span id="stat-poids-photo">—</span></div>
+      <div class="stat"><span>Mémoire vive utilisée</span><span id="stat-memoire">—</span></div>
+    </div>
+
     <h2 style="margin-top:28px">Connexion au backend</h2>
     <label for="champ-url">URL de déploiement (…/exec)</label>
     <input id="champ-url" type="url" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
@@ -603,19 +960,20 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
     <input id="champ-cle" type="text" autocomplete="off">
     <label for="champ-terminal">Identifiant du terminal</label>
     <input id="champ-terminal" type="text" autocomplete="off" placeholder="WEB-01">
-    <button class="action" id="btn-enregistrer">ENREGISTRER LES INFORMATIONS</button>
+    <button class="action" id="btn-enregistrer">Enregistrer les informations</button>
 
-    <button class="action" id="btn-sync">SYNCHRONISER LA BASE</button>
+    <h2 style="margin-top:28px">Base et photos</h2>
+    <button class="action" id="btn-sync">Synchroniser la base</button>
 
-    <button class="action" id="btn-photos">PRÉCHARGER LES PHOTOS</button>
+    <button class="action" id="btn-photos">Précharger les photos</button>
     <div class="note">
       Le préchargement télécharge toutes les miniatures (~12 ko chacune) pour un
       fonctionnement totalement hors ligne.
     </div>
 
-    <button class="action" id="btn-vider-photos">VIDER LE CACHE DES PHOTOS</button>
+    <button class="action" id="btn-vider-photos">Vider le cache des photos</button>
 
-    <button class="action danger" id="btn-purger">EFFACER LA BASE LOCALE</button>
+    <button class="action danger" id="btn-purger">Effacer la base locale</button>
     <div class="note">
       Les scans en attente d'envoi sont conservés : une purge ne doit jamais
       faire disparaître un passage non remonté.
@@ -624,13 +982,25 @@ h2 { font-size: 14px; text-transform: uppercase; color: var(--gris); margin-bott
 
 </main>
 
-<div id="message"></div>
+<div id="message" role="status"></div>
 
-<nav>
-  <button data-vue="vue-scan" class="actif">SCAN</button>
-  <button data-vue="vue-historique">HISTORIQUE</button>
-  <button data-vue="vue-recherche">RECHERCHE</button>
-  <button data-vue="vue-reglages">RÉGLAGES</button>
+<nav aria-label="Navigation principale">
+  <button data-vue="vue-scan" class="actif">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M7 12h10"/></svg>
+    <span>Scan</span>
+  </button>
+  <button data-vue="vue-historique">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    <span>Historique</span>
+  </button>
+  <button data-vue="vue-recherche">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+    <span>Recherche</span>
+  </button>
+  <button data-vue="vue-reglages">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+    <span>Réglages</span>
+  </button>
 </nav>
 
 <script src="rules.js"></script>
