@@ -441,16 +441,9 @@ input[type="search"]::-webkit-search-cancel-button { filter: invert(1); opacity:
 
 /* ── Acquittement bloquant ────────────────────────────────────────────
    Dans le pavé orange lui-même : le verdict et le geste qu'il exige forment un
-   seul bloc. Contour épais rayé noir et orange, comme sur la scannette : la
-   forme dit « contrôle » même quand la teinte se lit mal. */
+   seul bloc, en aplat orange uni. */
 #acquittement { display: none; margin-top: 16px; }
 #acquittement.visible { display: block; }
-#pave:has(#acquittement.visible) {
-  border: 6px solid transparent;
-  background:
-    linear-gradient(var(--orange), var(--orange)) padding-box,
-    repeating-linear-gradient(-45deg, var(--ink) 0 10px, var(--orange) 10px 20px) border-box;
-}
 #btn-acquitter.principal {
   margin-top: 0; background: transparent; border: 2px solid var(--ink);
   color: var(--ink); font-weight: 900;
@@ -758,7 +751,7 @@ nav button.verrouille span::after {
 }
 </style>
 </head>
-<body data-coque="31">
+<body data-coque="32">
 
 <!-- ── Écran de démarrage ────────────────────────────────────────────────
      Superposition plein écran affichée à la toute première mise en service,
@@ -824,7 +817,7 @@ nav button.verrouille span::after {
     <span id="etat-initiales"></span>
   </div>
   <div class="identite-poste">
-    <div id="etat-espace">Espace bénévole</div>
+    <div id="etat-espace">Session libre</div>
     <div class="poste"><span id="etat-terminal">—</span><span id="etat-point"></span></div>
     <div class="etat"><span id="etat-reseau">hors ligne</span> · <span id="etat-file">0 en attente</span></div>
   </div>

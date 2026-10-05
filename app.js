@@ -47,7 +47,7 @@ const etat = {
  * le cache du Service Worker. Affichée dans les réglages : c'est le seul moyen
  * de savoir, depuis le terrain, si un téléphone exécute bien le dernier code.
  */
-const VERSION_APP = 31;
+const VERSION_APP = 32;
 
 /**
  * Durée d'ouverture des fonctions réservées après présentation d'une carte.
@@ -2153,7 +2153,11 @@ function rafraichirBandeau() {
 function rendreEspace() {
   const ouverture = etat.deverrouillage;
   const staff = !!ouverture && ouverture.expire > Date.now();
-  definirTexte('etat-espace', staff ? 'Espace staff' : 'Espace bénévole');
+  // « Session libre » tant qu'aucune carte n'a ouvert la session : tout le
+  // monde peut scanner ; « Session staff » (ou admin) ensuite.
+  definirTexte('etat-espace', staff
+    ? 'Session ' + String(ouverture.role || 'staff').toLowerCase()
+    : 'Session libre');
   definirTexte('etat-point', etat.pointControle || '');
   const lettres = staff ? initiales(ouverture.nom) : '';
   definirTexte('etat-initiales', lettres);
