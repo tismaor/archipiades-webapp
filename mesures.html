@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141414">
+<title>echosys — Mesures réseau</title>
+<!--
+  Relevé de couverture réseau, à faire sur le site de l'événement AVANT le
+  jour J, à chaque endroit où un terminal scannera.
+
+  Ce qui est mesuré, et pourquoi :
+    1. Internet (generate_204 de Google) : le téléphone sort-il, et en combien
+       de temps ? C'est la condition de tout le reste.
+    2. Apps Script : un aller-retour COMPLET jusqu'à notre serveur — file
+       d'attente, exécution, redirection 302, lecture du résultat. Envoyé SANS
+       clé : le serveur répond « clé invalide », et cette réponse JSON prouve
+       qu'on a traversé tout le chemin qu'emprunte une vraie synchronisation.
+       Rien n'est écrit dans le classeur.
+    3. Débit : quelques fichiers de la Web App, pour estimer le temps d'un
+       premier chargement et du préchargement des photos.
+  Plus ce que l'appareil sait de lui-même (type de connexion estimé par
+  Chrome), ce que la personne lit à l'écran (barres, 4G/5G, opérateur), et la
+  position GPS si elle l'accepte.
+
+  ⚠️ Un site vide est optimiste : le jour J, des milliers de téléphones se
+  partagent les mêmes antennes. Une zone médiocre aujourd'hui sera mauvaise
+  ce jour-là ; une bonne zone n'est pas garantie pour autant.
+
+  Les relevés partent dans le classeur (onglet `Mesures_reseau`) dès que le
+  réseau le permet, et attendent sur le téléphone sinon — un relevé pris
+  dans une zone blanche part au relevé suivant. L'adresse du serveur et la
+  clé de repérage arrivent par le lien (#url=…&cle=…) : jamais inscrites
+  ici, le dépôt est public. Cette clé ne permet QUE d'ajouter des relevés
+  (`backend/Mesures.gs`) ; ce n'est pas la clé API d'echosys.
+-->
+<style>
+@font-face { font-family: 'Oswald'; src: url('oswald.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
+@font-face { font-family: 'Lato'; src: url('lato-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Lato'; src: url('lato-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Lato'; src: url('lato-900.woff2') format('woff2'); font-weight: 900; font-display: swap; }
+:root {
+  --ink: #141414; --ground: #1C1C1C; --surface: #262626; --surface-2: #2E2E2E;
+  --line: #383838; --line-soft: #313131; --chip: #4A4A4A;
+  --text: #fff; --text-2: #D6D6D6; --text-3: #9A9A9A;
+  --red: #E62015; --red-on-dark: #FF6B60; --green: #12873F; --amber: #FFB000; --orange: #F26B00;
+  --titre: 'Oswald', 'Arial Narrow', sans-serif; --texte: 'Lato', 'Helvetica Neue', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--ground); color: var(--text); font: 400 16px/1.45 var(--texte); }
+header {
+  background: var(--ink); border-bottom: 1px solid var(--line-soft);
+  padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px 14px;
+}
+.surtitre { font: 900 11px/1.3 var(--texte); letter-spacing: .12em; text-transform: uppercase; color: var(--red-on-dark); }
+h1 { font: 600 24px/1.2 var(--titre); text-transform: uppercase; letter-spacing: .03em; }
+header p { font-size: 13px; color: var(--text-2); }
+main { padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 32px); max-width: 560px; margin: 0 auto; }
+h2 { font: 600 18px/1.2 var(--titre); text-transform: uppercase; letter-spacing: .04em; margin: 22px 0 10px; }
+.carte { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+label { display: block; font: 700 12px/1.3 var(--texte); color: var(--text-3); margin: 14px 0 6px; }
+label:first-child { margin-top: 0; }
+input, select {
+  width: 100%; min-height: 48px; padding: 0 14px; border-radius: 12px; appearance: none;
+  border: 1px solid var(--chip); background: var(--ground); color: var(--text); font: 400 16px var(--texte);
+}
+input:focus, select:focus { outline: none; border-color: #fff; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button {
+  min-height: 40px; padding: 0 14px; border-radius: 20px; border: 1px solid var(--chip);
+  background: var(--surface); color: var(--text); font: 700 14px var(--texte);
+}
+.chips button[aria-pressed="true"] { background: #fff; color: var(--ink); border-color: #fff; }
+button.principal, button.secondaire {
+  display: block; width: 100%; min-height: 52px; margin-top: 14px; border-radius: 12px;
+  font: 900 16px var(--texte); border: 1px solid #fff; background: transparent; color: #fff;
+}
+button.principal { background: var(--red); border-color: var(--red); }
+button:disabled { opacity: .45; }
+.note { font-size: 13px; color: var(--text-3); margin-top: 8px; }
+.avertissement { border: 1px solid var(--red); border-radius: 14px; padding: 12px 14px; margin-top: 12px; font-size: 14px; }
+#progression { display: none; margin-top: 12px; font: 700 14px var(--texte); color: var(--text-2); }
+#progression.visible { display: block; }
+.releve { padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.releve:last-child { border-bottom: none; }
+.releve .tete { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.releve .lieu { font: 700 16px var(--texte); }
+.releve .heure { font: 600 14px var(--titre); color: var(--text-3); white-space: nowrap; }
+.releve .ligne { font-size: 14px; color: var(--text-2); margin-top: 3px; }
+.releve .ligne b { color: var(--text); }
+.badge { display: inline-block; margin-top: 6px; padding: 3px 8px; border-radius: 6px; font: 900 12px var(--texte); text-transform: uppercase; }
+.badge.bon { background: var(--green); color: #fff; }
+.badge.moyen { background: var(--orange); color: var(--ink); }
+.badge.mauvais { background: var(--red); color: #fff; }
+.vide { color: var(--text-3); font-size: 14px; }
+.envoi { display: inline-block; margin: 6px 0 0 8px; font: 700 12px var(--texte); color: var(--text-3); }
+.envoi.fait { color: #7fd69c; }
+</style>
+</head>
+<body>
+<header>
+  <div class="surtitre">echosys · repérage du site</div>
+  <h1>Mesures réseau</h1>
+  <p>Un relevé à chaque endroit où l'on scannera le jour J.</p>
+</header>
+<main>
+  <div id="sans-serveur" class="avertissement" hidden>
+    Lien incomplet : l'adresse du serveur manque. Le test du serveur sera
+    sauté et les relevés ne pourront pas partir dans le classeur.
+    Redemande le lien complet à l'organisation.
+  </div>
+
+  <h2>Où es-tu ?</h2>
+  <div class="carte">
+    <label for="lieu">Lieu précis</label>
+    <input id="lieu" list="lieux" placeholder="Ex. : gymnase A, côté tribunes" autocomplete="off">
+    <datalist id="lieux">
+      <option value="Entrée principale"><option value="Accueil / accréditation">
+      <option value="Restauration"><option value="Gymnase"><option value="Terrains extérieurs">
+      <option value="Camping"><option value="Soirée"><option value="Poste de secours">
+    </datalist>
+
+    <label>Intérieur ou extérieur</label>
+    <div class="chips" data-champ="milieu">
+      <button type="button" data-valeur="intérieur">Intérieur</button>
+      <button type="button" data-valeur="extérieur">Extérieur</button>
+    </div>
+
+    <label for="operateur">Opérateur de ton téléphone</label>
+    <select id="operateur">
+      <option value="">—</option><option>SFR</option><option>Orange</option>
+      <option>Bouygues</option><option>Free</option><option>Autre</option>
+    </select>
+
+    <label>Ce qu'affiche ton téléphone, en haut de l'écran</label>
+    <div class="chips" data-champ="barres">
+      <button type="button" data-valeur="0">0 barre</button><button type="button" data-valeur="1">1</button>
+      <button type="button" data-valeur="2">2</button><button type="button" data-valeur="3">3</button>
+      <button type="button" data-valeur="4">4</button>
+    </div>
+    <div class="chips" data-champ="reseau" style="margin-top:8px">
+      <button type="button" data-valeur="5G">5G</button><button type="button" data-valeur="4G">4G</button>
+      <button type="button" data-valeur="3G">3G</button><button type="button" data-valeur="E">E / 2G</button>
+      <button type="button" data-valeur="aucun">Aucun</button>
+    </div>
+    <p class="note">Coupe le Wi-Fi avant de mesurer : c'est la 4G que l'on veut connaître.
+       Le verdict juge la couverture du lieu ; le temps du serveur est noté à part.</p>
+
+    <button class="principal" id="mesurer">Lancer la mesure (≈ 30 s)</button>
+    <div id="progression"></div>
+  </div>
+
+  <h2>Relevés</h2>
+  <div class="carte" id="releves"><p class="vide">Aucun relevé pour l'instant.</p></div>
+  <div id="etat-envoi" class="note"></div>
+  <button class="secondaire" id="envoyer">Envoyer les relevés en attente</button>
+  <button class="secondaire" id="exporter" style="border-color:var(--chip);color:var(--text-2)">Exporter en CSV (secours)</button>
+  <button class="secondaire" id="effacer" style="border-color:var(--chip);color:var(--text-2)">Effacer les relevés</button>
+  <p class="note">Chaque relevé part dans le classeur de l'organisation dès qu'il y a du
+     réseau ; pris dans une zone blanche, il attend et part avec le suivant.
+     L'export CSV ne sert que si l'envoi est impossible.</p>
+</main>
+
+<script>
+'use strict';
+
+/* ─────────────────────────── Réglages ─────────────────────────── */
+
+const ESSAIS = 5;            // allers-retours par test
+const DELAI_MS = 15000;      // au-delà, l'essai compte comme un échec
+const FICHIERS_DEBIT = ['oswald.woff2', 'lato-400.woff2', 'lato-700.woff2', 'lato-900.woff2'];
+const CLE_RELEVES = 'mesures_releves';
+const CLE_URL = 'mesures_url';
+const CLE_REPERAGE = 'mesures_cle';
+
+// L'adresse du serveur et la clé de repérage : par le lien (#url=…&cle=…),
+// mémorisées, effacées de la barre d'adresse. Jamais écrites dans le code.
+(function () {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  try {
+    if (params.get('url')) localStorage.setItem(CLE_URL, params.get('url'));
+    if (params.get('cle')) localStorage.setItem(CLE_REPERAGE, params.get('cle'));
+  } catch (e) {}
+  if (location.hash) history.replaceState(null, '', location.pathname);
+})();
+function cleReperage() {
+  try { return localStorage.getItem(CLE_REPERAGE) || ''; } catch (e) { return ''; }
+}
+
+function urlServeur() {
+  try { return localStorage.getItem(CLE_URL) || localStorage.getItem('api_url') || ''; } catch (e) { return ''; }
+}
+if (!urlServeur()) document.getElementById('sans-serveur').hidden = false;
+
+/* ─────────────────────────── Formulaire ─────────────────────────── */
+
+const choix = {};
+document.querySelectorAll('.chips').forEach(function (groupe) {
+  groupe.addEventListener('click', function (e) {
+    const b = e.target.closest('button');
+    if (!b) return;
+    groupe.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    choix[groupe.dataset.champ] = b.dataset.valeur;
+  });
+});
+
+/* ─────────────────────────── Mesures ─────────────────────────── */
+
+function attendre(promesse, ms) {
+  return Promise.race([promesse, new Promise(function (_, rejeter) {
+    setTimeout(function () { rejeter(new Error('délai')); }, ms);
+  })]);
+}
+
+/** Un essai chronométré ; `valider` dit si la réponse est la bonne. */
+async function essai(url, options, valider) {
+  const t0 = performance.now();
+  try {
+    const r = await attendre(fetch(url, Object.assign({ cache: 'no-store' }, options)), DELAI_MS);
+    const ok = await valider(r);
+    return { ok: ok, ms: Math.round(performance.now() - t0) };
+  } catch (e) {
+    return { ok: false, ms: null };
+  }
+}
+
+function resume(essais) {
+  const durees = essais.filter(function (e) { return e.ok; }).map(function (e) { return e.ms; }).sort(function (a, b) { return a - b; });
+  return {
+    reussis: durees.length,
+    echecs: essais.length - durees.length,
+    mediane: durees.length ? durees[Math.floor(durees.length / 2)] : null,
+    max: durees.length ? durees[durees.length - 1] : null
+  };
+}
+
+function position() {
+  if (!navigator.geolocation) return Promise.resolve(null);
+  return new Promise(function (resoudre) {
+    navigator.geolocation.getCurrentPosition(
+      function (p) { resoudre({ lat: p.coords.latitude, lon: p.coords.longitude, precision: Math.round(p.coords.accuracy) }); },
+      function () { resoudre(null); },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  });
+}
+
+/**
+ * Verdict sur la COUVERTURE du lieu : Internet et débit. Le temps du serveur
+ * Apps Script est relevé à côté mais n'entre pas dans le verdict — il dépend
+ * surtout de Google, qui rame certains jours partout (mesuré : 5 s depuis un
+ * bureau fibré). On le comparera à un relevé fait au même moment ailleurs.
+ *   bon     — Internet répond vite et à chaque fois, débit correct ;
+ *   juste   — ça passe, mais lentement ou pas à chaque fois ;
+ *   mauvais — presque rien ne passe : prévoir un routeur 4G, une autre
+ *             antenne, ou compter sur le hors ligne toute la journée.
+ */
+function verdict(r) {
+  const i = r.internet;
+  if (!i || i.reussis === 0 || i.echecs >= 2 || i.mediane > 3000 || r.debit_ko_s < 20) return 'mauvais';
+  if (i.echecs === 1 || i.mediane > 800 || r.debit_ko_s < 150) return 'moyen';
+  return 'bon';
+}
+
+async function mesurer() {
+  const bouton = document.getElementById('mesurer');
+  const etat = document.getElementById('progression');
+  const lieu = document.getElementById('lieu').value.trim();
+  if (!lieu) { alert('Indique d\'abord le lieu précis.'); return; }
+  bouton.disabled = true;
+  etat.className = 'visible';
+
+  const releve = {
+    id: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)),
+    envoye: false,
+    date: new Date().toISOString(), lieu: lieu, milieu: choix.milieu || '',
+    operateur: document.getElementById('operateur').value, barres: choix.barres || '', reseau: choix.reseau || '',
+    en_ligne: navigator.onLine,
+    connexion: navigator.connection ? (navigator.connection.type || '') + ' ' + (navigator.connection.effectiveType || '') : '',
+    rtt_estime: navigator.connection ? navigator.connection.rtt : null
+  };
+
+  etat.textContent = 'Position…';
+  releve.gps = await position();
+
+  const internet = [];
+  for (let i = 0; i < ESSAIS; i++) {
+    etat.textContent = 'Internet : essai ' + (i + 1) + ' sur ' + ESSAIS + '…';
+    internet.push(await essai('https://www.google.com/generate_204?n=' + Math.random(), { mode: 'no-cors' },
+      async function () { return true; }));
+  }
+  releve.internet = resume(internet);
+
+  const serveur = urlServeur();
+  if (serveur) {
+    const essaisApi = [];
+    for (let i = 0; i < ESSAIS; i++) {
+      etat.textContent = 'Serveur Apps Script : essai ' + (i + 1) + ' sur ' + ESSAIS + '…';
+      // Sans clé, exprès : la réponse « clé invalide » prouve l'aller-retour complet.
+      essaisApi.push(await essai(serveur + '?action=ping&n=' + Math.random(), { redirect: 'follow' },
+        async function (r) { const t = await r.text(); return t.charAt(0) === '{'; }));
+    }
+    releve.appsscript = resume(essaisApi);
+  }
+
+  etat.textContent = 'Débit…';
+  let octets = 0;
+  const t0 = performance.now();
+  for (const f of FICHIERS_DEBIT) {
+    try {
+      const r = await attendre(fetch(f + '?n=' + Math.random(), { cache: 'no-store' }), DELAI_MS);
+      octets += (await r.arrayBuffer()).byteLength;
+    } catch (e) { /* compté par l'absence d'octets */ }
+  }
+  const secondes = (performance.now() - t0) / 1000;
+  releve.debit_ko_s = octets ? Math.round(octets / 1024 / secondes) : 0;
+  releve.verdict = verdict(releve);
+
+  const releves = lire();
+  releves.unshift(releve);
+  ecrire(releves);
+  etat.className = '';
+  bouton.disabled = false;
+  afficher();
+  envoyer();
+}
+
+function ecrire(releves) {
+  try { localStorage.setItem(CLE_RELEVES, JSON.stringify(releves)); } catch (e) {}
+}
+
+/**
+ * Envoie au classeur les relevés pas encore partis. Un relevé n'est marqué
+ * envoyé que sur accusé de réception : coupé en route, il repart au prochain
+ * essai, et le serveur écarte le doublon par son identifiant.
+ */
+let envoiEnCours = false;
+async function envoyer() {
+  const serveur = urlServeur(), cle = cleReperage();
+  const zone = document.getElementById('etat-envoi');
+  const attente = lire().filter(function (r) { return !r.envoye; });
+  if (!attente.length) { zone.textContent = 'Tous les relevés sont dans le classeur.'; return; }
+  if (!serveur || !cle) { zone.textContent = 'Envoi impossible : lien incomplet. Utilise l\'export CSV.'; return; }
+  if (envoiEnCours) return;
+  envoiEnCours = true;
+  zone.textContent = 'Envoi de ' + attente.length + ' relevé(s) au classeur…';
+  try {
+    const r = await attendre(fetch(serveur, {
+      method: 'POST', redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // pas de pré-vérification CORS
+      body: JSON.stringify({ action: 'mesure_reseau', cle_mesures: cle, releves: attente })
+    }), 30000);
+    const reponse = JSON.parse(await r.text());
+    if (!reponse.ok) throw new Error(reponse.erreur || 'refus du serveur');
+    const acceptes = {};
+    (reponse.acceptes || []).forEach(function (id) { acceptes[id] = true; });
+    const releves = lire();
+    releves.forEach(function (x) { if (acceptes[x.id]) x.envoye = true; });
+    ecrire(releves);
+    const restent = releves.filter(function (x) { return !x.envoye; }).length;
+    zone.textContent = restent ? restent + ' relevé(s) encore en attente.' : 'Tous les relevés sont dans le classeur.';
+  } catch (e) {
+    zone.textContent = 'Envoi impossible pour l\'instant (' + e.message + ') : nouvel essai au prochain relevé.';
+  } finally {
+    envoiEnCours = false;
+    afficher();
+  }
+}
+
+/* ─────────────────────────── Relevés ─────────────────────────── */
+
+function lire() {
+  try { return JSON.parse(localStorage.getItem(CLE_RELEVES) || '[]'); } catch (e) { return []; }
+}
+
+function echapper(t) { const d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+function secondes(ms) {
+  if (ms == null) return '—';
+  return ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+}
+
+function afficher() {
+  const releves = lire();
+  const zone = document.getElementById('releves');
+  if (!releves.length) { zone.innerHTML = '<p class="vide">Aucun relevé pour l\'instant.</p>'; return; }
+  const libelles = { bon: 'Bon', moyen: 'Juste', mauvais: 'Insuffisant' };
+  zone.innerHTML = releves.map(function (r) {
+    const d = new Date(r.date);
+    const heure = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    const api = r.appsscript
+      ? '<div class="ligne">Serveur : <b>' + secondes(r.appsscript.mediane) + '</b> (max ' + secondes(r.appsscript.max) +
+        ') · ' + r.appsscript.echecs + ' échec(s) sur ' + (r.appsscript.reussis + r.appsscript.echecs) + '</div>'
+      : '<div class="ligne">Serveur : non testé</div>';
+    return '<div class="releve"><div class="tete"><span class="lieu">' + echapper(r.lieu) +
+      (r.milieu ? ' · ' + echapper(r.milieu) : '') + '</span><span class="heure">' + heure + '</span></div>' +
+      '<div class="ligne">' + echapper([r.operateur, r.reseau, r.barres !== '' ? r.barres + ' barre(s)' : ''].filter(Boolean).join(' · ') || 'Réseau non renseigné') + '</div>' +
+      '<div class="ligne">Internet : <b>' + secondes(r.internet.mediane) + '</b> · ' + r.internet.echecs + ' échec(s)</div>' +
+      api + '<div class="ligne">Débit : <b>' + r.debit_ko_s + ' ko/s</b>' +
+      (r.gps ? ' · GPS ±' + r.gps.precision + ' m' : '') + '</div>' +
+      '<span class="badge ' + r.verdict + '">' + libelles[r.verdict] + '</span>' +
+      '<span class="envoi' + (r.envoye ? ' fait">Dans le classeur' : '">En attente d\'envoi') + '</span></div>';
+  }).join('');
+}
+
+function csv() {
+  const colonnes = ['date', 'lieu', 'milieu', 'operateur', 'reseau', 'barres', 'connexion', 'rtt_estime',
+    'internet_mediane_ms', 'internet_echecs', 'serveur_mediane_ms', 'serveur_max_ms', 'serveur_echecs',
+    'debit_ko_s', 'verdict', 'latitude', 'longitude', 'precision_m'];
+  const lignes = lire().map(function (r) {
+    return [r.date, r.lieu, r.milieu, r.operateur, r.reseau, r.barres, r.connexion, r.rtt_estime,
+      r.internet.mediane, r.internet.echecs,
+      r.appsscript ? r.appsscript.mediane : '', r.appsscript ? r.appsscript.max : '', r.appsscript ? r.appsscript.echecs : '',
+      r.debit_ko_s, r.verdict, r.gps ? r.gps.lat : '', r.gps ? r.gps.lon : '', r.gps ? r.gps.precision : '']
+      .map(function (v) { const t = v == null ? '' : String(v); return /[",;\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; })
+      .join(';');
+  });
+  return [colonnes.join(';')].concat(lignes).join('\n');
+}
+
+async function exporter() {
+  if (!lire().length) { alert('Aucun relevé à exporter.'); return; }
+  const nom = 'mesures_reseau_' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.csv';
+  const fichier = new File(['﻿' + csv()], nom, { type: 'text/csv' });
+  if (navigator.canShare && navigator.canShare({ files: [fichier] })) {
+    try { await navigator.share({ files: [fichier], title: 'Mesures réseau' }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const lien = document.createElement('a');
+  lien.href = URL.createObjectURL(fichier);
+  lien.download = nom;
+  lien.click();
+}
+
+document.getElementById('mesurer').addEventListener('click', mesurer);
+document.getElementById('exporter').addEventListener('click', exporter);
+document.getElementById('envoyer').addEventListener('click', envoyer);
+window.addEventListener('online', envoyer);
+document.getElementById('effacer').addEventListener('click', function () {
+  if (confirm('Effacer tous les relevés de ce téléphone ?')) { localStorage.removeItem(CLE_RELEVES); afficher(); }
+});
+afficher();
+envoyer();
+</script>
+</body>
+</html>
